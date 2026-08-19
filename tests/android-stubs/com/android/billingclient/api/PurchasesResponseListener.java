@@ -1,0 +1,8 @@
+package com.android.billingclient.api;
+
+import java.util.List;
+
+@FunctionalInterface
+public interface PurchasesResponseListener {
+    void onQueryPurchasesResponse(BillingResult billingResult, List<Purchase> purchases);
+}

@@ -1,0 +1,25 @@
+{
+  "FileVersion": 3,
+  "Version": 2,
+  "VersionName": "0.2.0",
+  "FriendlyName": "Fast Game",
+  "Description": "Official Fast Game FastAPI client (C++ + Blueprint subsystem). Use colyseus-unreal as a sibling plugin for multiplayer.",
+  "Category": "Networking",
+  "CreatedBy": "Fast Game",
+  "CreatedByURL": "",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "CanContainContent": true,
+  "IsBetaVersion": true,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "FastGame",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": []
+}

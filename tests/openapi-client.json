@@ -1,0 +1,26 @@
+{
+  "info": {
+    "title": "Fast Game client API snapshot",
+    "description": "Hand-curated client paths for Unity/Unreal SDK parity. Not a full OpenAPI export.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "http://api.localhost/api/v1" }],
+  "paths": {
+    "/base/login/access-token": { "post": { "summary": "OAuth2 password login" } },
+    "/apps/games/catalog/": { "get": { "summary": "List games" } },
+    "/apps/games/catalog/{game_id}": { "get": { "summary": "Game detail" } },
+    "/apps/games/content/{game}/characters": { "get": { "summary": "List characters" } },
+    "/apps/games/content/{game}/characters/{character_id}/cosmetics": { "get": {} },
+    "/apps/games/content/{game}/characters/{character_id}/abilities": { "get": {} },
+    "/apps/games/content/{game}/maps/{map_id}/runtime": { "get": { "summary": "Map runtime placements" } },
+    "/apps/games/content/{game}/players/me/spawn": { "post": { "summary": "Resolve spawn" } },
+    "/apps/games/content/{game}/players/me/loadout": { "get": {}, "put": {} },
+    "/apps/games/content/{game}/players/me/pickup-claim": { "post": {} },
+    "/apps/games/shop/catalog": { "get": {} },
+    "/apps/games/shop/access": { "get": { "summary": "SKU locked + owned for Branch" } },
+    "/apps/games/shop/claim-free": { "post": {} },
+    "/base/payments/initiate": { "post": {} },
+    "/base/payments/verify": { "post": {} },
+    "/utils/game-server/": { "get": { "summary": "Colyseus WS URL" } }
+  }
+}

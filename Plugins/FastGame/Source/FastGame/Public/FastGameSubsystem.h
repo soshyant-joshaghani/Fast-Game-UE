@@ -1,0 +1,1091 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Templates/Function.h"
+#include "Subsystems/GameInstanceSubsystem.h"
+#include "Engine/LatentActionManager.h"
+#include "FastGameBlueprintTypes.h"
+#include "FastGameSubsystem.generated.h"
+
+class FFastGameClient;
+
+/**
+ * Blueprint facade over FFastGameClient.
+ * Initialize Game (1x build + OS) then Initialize Client (Nx network). Then Enter / Login / etc.
+ */
+UCLASS(DisplayName = "Fast Game")
+class FASTGAME_API UFastGameSubsystem : public UGameInstanceSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+
+	// --- Lifecycle ---
+
+	/**
+	 * One-time build config + OS store check (Myket / Cafe Bazaar / Play APK).
+	 * Persists GameCode / StorePlatform even before Initialize Client. Does not wipe token or Enter identity.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Initialize Game", CPP_Default_StorePlatform = "Unset"))
+	void InitializeGame(
+		const FString& GameCode,
+		EFastGameStorePlatform StorePlatform,
+		bool& bSuccess,
+		FString& Message);
+
+	/**
+	 * Network / reconnect only (1x or Nx). ApiBaseUrl, HTTP client, restore token.
+	 * Does not wipe Enter identity. Does not check store install — call Initialize Game for that.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Initialize Client"))
+	void InitializeClient(
+		const FString& ApiBaseUrl,
+		bool& bSuccess,
+		FString& Message);
+
+	/** @deprecated Call Initialize Game then Initialize Client. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Initialize Client (Legacy)",
+		DeprecatedFunction, DeprecationMessage = "Call Initialize Game then Initialize Client",
+		CPP_Default_StorePlatform = "Unset"))
+	void InitializeClientAndGame(
+		const FString& ApiBaseUrl,
+		const FString& GameCode,
+		EFastGameStorePlatform StorePlatform,
+		bool& bSuccess,
+		FString& Message);
+
+	/** Optional Blueprint override. Leave empty — SDK fetches Cafe Bazaar / Myket RSA from Editor after login (never JWT / api_secret). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Set Store Public Key"))
+	void SetStorePublicKey(const FString& PublicKey);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame", meta = (DisplayName = "Get Store Public Key"))
+	FString GetStorePublicKey() const;
+
+	/** Active catalog game for auth OTP / recovery (also set via Initialize Game). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Set Game Code"))
+	void SetGameCode(const FString& GameCode);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame", meta = (DisplayName = "Get Game Code"))
+	FString GetGameCode() const;
+
+	/** Target store for this APK (myket / caffebazar / googleplay / steam / zarinpal). Set via Initialize Game. Empty shop Provider uses this. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Set Store Platform"))
+	void SetStorePlatform(EFastGameStorePlatform StorePlatform);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame", meta = (DisplayName = "Get Store Platform"))
+	EFastGameStorePlatform GetStorePlatform() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame", meta = (DisplayName = "Get Store Platform Id"))
+	FString GetStorePlatformId() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame")
+	bool IsInitialized() const;
+
+	/** Native C++ client (FastGameStore Purchase Or Restore). */
+	TSharedPtr<FFastGameClient> GetClient() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Is Authenticated"))
+	bool IsAuthenticated() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame")
+	bool IsLoggedIn() const;
+
+	/**
+	 * Latent auth gate for Branch: bAuthenticated is true when a token is present and /me succeeds.
+	 * Clears a bad token on failure so Is Authenticated becomes false.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Check Authentication"))
+	void CheckAuthentication(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bAuthenticated);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame")
+	FString GetAccessToken() const;
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame")
+	void SetAccessToken(const FString& Token);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame")
+	void Logout();
+
+	/** Clear access token, ENTER-stored identity, and pending-payment cache. Use on login page as a dev tool. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth")
+	void ClearLocalCache();
+
+	/** Result of the most recent Login call (also true after successful Signup auto-login). */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth")
+	bool GetLastLoginSucceeded() const { return bLastLoginSucceeded; }
+
+	/** Result of the most recent Signup call. */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth")
+	bool GetLastSignupSucceeded() const { return bLastSignupSucceeded; }
+
+	// --- Auth (latent: waits for HTTP, then continues with bSuccess for Branch) ---
+
+	/**
+	 * ENTER contract: probe Identity (POST /base/login/enter). No widgets — only routes exec pins.
+	 * Channel: Auto (detect), Email, or Phone.
+	 * Pins: Login | Complete Account | Verify Id | Register | Failed.
+	 * Forgot is a Login-screen button (Begin Forgot), not an Enter pin.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Route", DisplayName = "Enter"))
+	void Enter(
+		const FString& Identity,
+		EFastGameIdentityChannel Channel,
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Route") EFastGameEnterRoute& Route,
+		bool& bSuccess,
+		FString& Message,
+		FString& OutIdentity,
+		FString& OutEmail,
+		FString& OutPhone,
+		bool& bOutEmail,
+		bool& bOutPhone);
+
+	/**
+	 * Login with email or phone identity and wait for the HTTP response.
+	 * Channel: Auto (detect), Email, or Phone (same as Enter).
+	 * Leave Identity empty to use the ENTER-stored identity.
+	 * Then wire bSuccess into a Branch. StatusCode / Message come from the API.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Login"))
+	void Login(
+		const FString& Identity,
+		const FString& Password,
+		EFastGameIdentityChannel Channel,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/** Clear ENTER-stored identity (Saved/FastGame/FastGameEnteredIdentity.txt). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Clear Entered Identity"))
+	void ClearEnteredIdentity();
+
+	/** ENTER-stored identity (empty if none). Loads from disk if needed. */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Get Entered Identity"))
+	FString GetEnteredIdentity() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Has Entered Identity"))
+	bool HasEnteredIdentity() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Get Entered Channel"))
+	EFastGameIdentityChannel GetEnteredChannel() const;
+
+	/** Last Enter route (Unity LastEnterRoute) — used by Send/Verify Auth Code. */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Get Last Enter Route"))
+	EFastGameEnterRoute GetLastEnterRoute() const { return LastEnterRoute; }
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Is Forgot Password"))
+	bool IsForgotPassword() const { return bForgotPassword; }
+
+	/** From Login screen: next Send/Verify Auth Code uses recovery OTP, then Set Password. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Begin Forgot"))
+	void BeginForgot();
+
+	/**
+	 * Register / Signup (+ auto-login). Email and/or Phone empty → ENTER store.
+	 * After Verify Id OTP, or directly when verify is off.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Register"))
+	void Signup(
+		const FString& Email,
+		const FString& Phone,
+		const FString& Password,
+		const FString& PasswordConfirm,
+		const FString& FullName,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& UserId,
+		FString& OutEmail,
+		FString& OutPhone,
+		FString& Message);
+
+	/**
+	 * Complete Account: passwordless existing user. Password + confirm + optional Full Name. No OTP.
+	 * Empty Email+Phone → ENTER store. Auto-login on success.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Complete Account"))
+	void CompleteAccount(
+		const FString& Email,
+		const FString& Phone,
+		const FString& Password,
+		const FString& PasswordConfirm,
+		const FString& FullName,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& UserId,
+		FString& OutEmail,
+		FString& OutPhone,
+		FString& Message);
+
+	/**
+	 * Forgot password — step 1/3: send recovery OTP.
+	 * Use after Begin Forgot (not for Complete Account). Empty Identity → ENTER store.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Request Password Recovery (1/3 Send Code)"))
+	void RequestPasswordRecovery(
+		const FString& Identity,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/**
+	 * Forgot password — step 2/3: verify recovery OTP.
+	 * Empty Identity → ENTER store. On bSuccess, show Set Password panel.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Verify Password Recovery (2/3 Check Code)"))
+	void VerifyPasswordRecovery(
+		const FString& Identity,
+		const FString& Code,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/**
+	 * Forgot password — step 3/3: set new password (password + confirm, no name).
+	 * Empty Identity → ENTER store. No Code pin — OTP checked in step 2.
+	 * Auto-login on success so shop / Get Me work without a separate Login.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Set Password"))
+	void ConfirmPasswordRecovery(
+		const FString& Identity,
+		const FString& NewPassword,
+		const FString& NewPasswordConfirm,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/** Signup OTP — step 1/2: send code (after Enter → Verify Id). Empty Identity → ENTER store. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Request Signup Verification (Send Code)"))
+	void RequestSignupVerification(
+		const FString& Identity,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/** Signup OTP — step 2/2: verify code then show Register. Empty Identity → ENTER store. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Verify Signup Verification (Check Code)"))
+	void VerifySignupVerification(
+		const FString& Identity,
+		const FString& Code,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/**
+	 * Shared OTP send. Empty Identity → ENTER store.
+	 * Verify Id → signup OTP; Begin Forgot → recovery OTP; otherwise fails.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Send Auth Code"))
+	void SendAuthCode(
+		const FString& Identity,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/**
+	 * Shared OTP verify. Empty Identity → ENTER store.
+	 * Verify Id → signup verify; Begin Forgot → recovery verify; otherwise fails.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Verify Auth Code"))
+	void VerifyAuthCode(
+		const FString& Identity,
+		const FString& Code,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/** Classify a contact string as Email, Phone, or Unknown (for UI hints). */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth")
+	static bool IsEmailIdentity(const FString& Identity);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Auth")
+	static bool IsPhoneIdentity(const FString& Identity);
+
+	/**
+	 * GetMe and wait for the HTTP response.
+	 * Then wire bSuccess into a Branch; User / CurrentUser hold the profile.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo"))
+	void GetMe(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FFastGameBPUser& User,
+		FString& Message);
+
+	/** PATCH /base/login/me — display name only. Requires login. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		DisplayName = "Update Full Name"))
+	void UpdateFullName(
+		const FString& FullName,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FFastGameBPUser& User,
+		FString& Message);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo"))
+	void LinkSteamWithTicket(
+		const FString& Ticket,
+		const FString& Identity,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bLinked,
+		FString& SteamId);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo"))
+	void GetSteamStatus(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bLinked,
+		FString& SteamId);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo"))
+	void UnlinkSteam(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	// --- Catalog ---
+
+	/** Lang: BCP-47 tag for resolved labels (e.g. fa). Expand I18n: include full translations maps. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Catalog", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void ListGames(
+		bool bAvailableOnly,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		TArray<FFastGameBPCatalogEntry>& Games);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Catalog", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void GetGame(
+		const FString& GameId,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPCatalogDetail& Game);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Catalog", meta = (Latent, LatentInfo = "LatentInfo"))
+	void GetGameServer(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& Url);
+
+	// --- Content ---
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void ListCharacters(
+		const FString& GameId,
+		const FString& Role,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		TArray<FFastGameBPCharacter>& Characters);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void PrepareSession(
+		const FString& GameId,
+		const FString& ModeId,
+		const FString& MapId,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPPreparedSession& Session);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void GetMapRuntime(
+		const FString& GameId,
+		const FString& MapId,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void ResolveSpawn(
+		const FString& GameId,
+		const FString& MapId,
+		const FString& ModeId,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo"))
+	void GetLoadout(
+		const FString& GameId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPLoadout& Loadout);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo"))
+	void SetLoadout(
+		const FString& GameId,
+		const FString& CharacterId,
+		const TMap<FString, FString>& Cosmetics,
+		const TMap<FString, FString>& ModularParts,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPLoadout& Loadout);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo"))
+	void ClaimPickup(
+		const FString& GameId,
+		const FString& MapId,
+		const FString& PickupId,
+		const FString& PlacementId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo"))
+	void ClaimEvent(
+		const FString& GameId,
+		const FString& EventId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	// --- Shop ---
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Shop")
+	bool HasPendingPayment() const;
+
+	/** Empty GameIdFilter → Initialize Game GameCode (same as Enter empty Identity). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_GameIdFilter = "", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
+	void GetShopCatalog(
+		const FString& GameIdFilter,
+		const FString& Lang,
+		bool bExpandI18n,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		TArray<FFastGameBPShopLine>& Lines);
+
+	/** Content lock + player purchase state for Branch nodes. Empty GameCode → Initialize Game.
+	 * Android store: also queries native inventory (no purchase UI). If the store already owns
+	 * the SKU, completes Unlock so Fast Game ownership matches. ZarinPal/Steam: Fast Game only. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", CPP_Default_GameCode = ""))
+	void GetShopSkuAccess(
+		const FString& GameCode,
+		const FString& SkuKind,
+		const FString& SkuId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bLocked,
+		bool& bOwned);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Shop")
+	bool IsShopLineLocked(const FFastGameBPShopLine& Line) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Shop")
+	bool IsShopLineOwned(const FFastGameBPShopLine& Line) const;
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", CPP_Default_GameCode = ""))
+	void ClaimFree(
+		const FString& GameCode,
+		const FString& SkuKind,
+		const FString& SkuId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", CPP_Default_GameCode = ""))
+	void RedeemCode(
+		const FString& GameCode,
+		const FString& Code,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	/**
+	 * One designer purchase flow. Empty GameCode → Initialize Game.
+	 * Store IAP: begin → native token → complete. ZarinPal/Steam: begin (opens URL if any) then Complete Unlock.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Unlock Sku", CPP_Default_GameCode = "", CPP_Default_CallbackUrl = "", CPP_Default_DiscountCode = ""))
+	void UnlockSku(
+		const FString& GameCode,
+		const FString& SkuKind,
+		const FString& SkuId,
+		const FString& CallbackUrl,
+		const FString& DiscountCode,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bOwned,
+		FFastGameBPShopUnlock& Pending);
+
+	/** After ZarinPal return / Steam overlay / or a store token you already have. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Complete Unlock"))
+	void CompleteUnlock(
+		const FString& PurchaseToken,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bOwned);
+
+	/**
+	 * Shop return / progress (like Enter pins). Place on Event Application Has Reactivated
+	 * after a payment, or after Unlock Sku.
+	 * Pins: Purchase Successful | Purchase Pending | Purchase Failed | Purchase Cancelled | Store Missing.
+	 * Completes a pending ZarinPal checkout if one exists.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Progress", DisplayName = "Shop Progress"))
+	void ShopProgress(
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Progress") EFastGameShopProgress& Progress,
+		bool& bOwned,
+		FString& Message);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Shop", meta = (DisplayName = "Get Last Shop Progress"))
+	EFastGameShopProgress GetLastShopProgress() const { return LastShopProgress; }
+
+	/**
+	 * ZarinPal default Buy (opens payment_url when present).
+	 * Deprecated — use Unlock Sku.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Buy", DeprecatedFunction, DeprecationMessage = "Use Unlock Sku"))
+	void Buy(
+		const FString& GameCode,
+		const FString& SkuKind,
+		const FString& SkuId,
+		const FString& CallbackUrl,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPPaymentInitiate& Payment);
+
+	/**
+	 * Provider: zarinpal | myket | caffebazar | googleplay | steam. Empty → Initialize Game StorePlatform.
+	 * Empty GameCode → Initialize Game GameCode.
+	 * Store IAP (myket/caffebazar/googleplay): billing/initiate → Payment.StoreProductId
+	 * (no PaymentUrl). Prefer Purchase Or Restore Store Sku (FastGameStore plugin).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Buy With Provider", DeprecatedFunction, DeprecationMessage = "Use Unlock Sku", CPP_Default_GameCode = "", CPP_Default_Provider = "", CPP_Default_Currency = "rial"))
+	void BuyWithProvider(
+		const FString& GameCode,
+		const FString& SkuKind,
+		const FString& SkuId,
+		const FString& CallbackUrl,
+		const FString& Provider,
+		const FString& Currency,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FFastGameBPPaymentInitiate& Payment);
+
+	/**
+	 * After native Myket / Cafe Bazaar / Google Play purchase: pass the store purchase_token.
+	 * Uses the pending payment from Buy With Provider. Grants shop ownership on success.
+	 * Do not use Verify Pending for store IAP (that is ZarinPal/browser).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Submit Billing", DeprecatedFunction, DeprecationMessage = "Use Complete Unlock"))
+	void SubmitBilling(
+		const FString& PurchaseToken,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bPaymentSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DeprecatedFunction, DeprecationMessage = "Use Complete Unlock"))
+	void FinalizeSteam(
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bPaymentSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop", meta = (Latent, LatentInfo = "LatentInfo", DeprecatedFunction, DeprecationMessage = "Use Complete Unlock"))
+	void VerifyPending(
+		const FString& AuthorityOverride,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bPaymentSuccess);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Shop")
+	void ClearPendingPayment();
+
+	// --- Ads ---
+
+	/**
+	 * Request a provider-opaque advertisement. bHasAd=false on HTTP 204 (no fill).
+	 * Pass MediaType to prefer a type (image|gif|video|lottie|rive|text); leave empty for any.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine"))
+	void GetAdvertisement(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& MediaType,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FFastGameBPAdvertisement& Ad);
+
+	/** Image ad — MediaUrl/ImageUrl ready for UMG download / brush. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Image Ad"))
+	void GetImageAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& ImageUrl,
+		FString& ClickUrl,
+		int32& Width,
+		int32& Height,
+		FFastGameBPAdvertisement& Ad);
+
+	/** Video ad — VideoUrl for Media Player. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Video Ad"))
+	void GetVideoAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& VideoUrl,
+		FString& ClickUrl,
+		FFastGameBPAdvertisement& Ad);
+
+	/** Gif ad. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Gif Ad"))
+	void GetGifAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& MediaUrl,
+		FString& ClickUrl,
+		FFastGameBPAdvertisement& Ad);
+
+	/** Lottie ad — MediaUrl points at the Lottie JSON/file. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Lottie Ad"))
+	void GetLottieAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& MediaUrl,
+		FString& ClickUrl,
+		FFastGameBPAdvertisement& Ad);
+
+	/** Rive ad — MediaUrl points at the .riv asset. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Rive Ad"))
+	void GetRiveAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& MediaUrl,
+		FString& ClickUrl,
+		FFastGameBPAdvertisement& Ad);
+
+	/**
+	 * Text ad — Title/Body + optional BackgroundUrl / BackgroundColor.
+	 * Creative meta keys: title, body, background_url, background_color.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Format,Tags,Locale,Country,Platform,Engine", DisplayName = "Get Text Ad"))
+	void GetTextAd(
+		const FString& GameId,
+		const FString& Slot,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FString& Title,
+		FString& Body,
+		FString& BackgroundUrl,
+		FString& BackgroundColor,
+		FString& ClickUrl,
+		FFastGameBPAdvertisement& Ad);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo"))
+	void TrackAdEvent(
+		const FString& EventType,
+		const FString& AdId,
+		const FString& GameId,
+		const FString& CampaignId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Track Ad Displayed"))
+	void TrackAdDisplayed(
+		const FFastGameBPAdvertisement& Ad,
+		const FString& GameId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Track Ad Clicked"))
+	void TrackAdClicked(
+		const FFastGameBPAdvertisement& Ad,
+		const FString& GameId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ads", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Track Ad Closed"))
+	void TrackAdClosed(
+		const FFastGameBPAdvertisement& Ad,
+		const FString& GameId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Image Ad"))
+	bool IsImageAd(const FFastGameBPAdvertisement& Ad) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Video Ad"))
+	bool IsVideoAd(const FFastGameBPAdvertisement& Ad) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Gif Ad"))
+	bool IsGifAd(const FFastGameBPAdvertisement& Ad) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Lottie Ad"))
+	bool IsLottieAd(const FFastGameBPAdvertisement& Ad) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Rive Ad"))
+	bool IsRiveAd(const FFastGameBPAdvertisement& Ad) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Is Text Ad"))
+	bool IsTextAd(const FFastGameBPAdvertisement& Ad) const;
+
+	/** Break Ad into common UMG pins (same fields as the struct). */
+	UFUNCTION(BlueprintPure, Category = "FastGame|Ads", meta = (DisplayName = "Break Advertisement"))
+	void BreakAdvertisement(
+		const FFastGameBPAdvertisement& Ad,
+		FString& Id,
+		FString& CampaignId,
+		FString& MediaType,
+		FString& MediaUrl,
+		int32& Width,
+		int32& Height,
+		bool& bClickEnabled,
+		FString& ClickUrl,
+		FString& Title,
+		FString& Body,
+		FString& BackgroundUrl,
+		FString& BackgroundColor);
+
+	// --- Assets ---
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Assets")
+	TArray<FFastGameBPAssetPack> ListPacksFromGameDetail(const FFastGameBPCatalogDetail& Detail) const;
+
+	// --- Delegates ---
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameLoginComplete OnLoginComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameSignupComplete OnSignupComplete;
+
+	/** Most recent Login result — bind UI to this or read via Get Last Login Succeeded. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bLastLoginSucceeded = false;
+
+	/** Most recent Signup result — bind UI to this or read via Get Last Signup Succeeded. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bLastSignupSucceeded = false;
+
+	/** Route from the most recent Enter (drives Send/Verify Auth Code). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	EFastGameEnterRoute LastEnterRoute = EFastGameEnterRoute::Failed;
+
+	/** True after Begin Forgot until the next Enter / Clear Entered Identity. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bForgotPassword = false;
+
+	/** Cached profile from the last successful GetMe — bind Text / Image widgets to fields. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	FFastGameBPUser CurrentUser;
+
+	/** HTTP status from the last HTTP request (0 = local/network). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	int32 LastAuthStatusCode = 0;
+
+	/** Message from the last HTTP request (API detail or local error). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	FString LastAuthMessage;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameGetMeComplete OnGetMeComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameSteamStatus OnSteamLinkComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameSteamStatus OnSteamStatus;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameSimpleComplete OnUnlinkSteamComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Catalog")
+	FOnFastGameListGames OnListGamesComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Catalog")
+	FOnFastGameGetGame OnGetGameComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Catalog")
+	FOnFastGameGetGameServer OnGetGameServerComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameListCharacters OnListCharactersComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGamePrepareSession OnPrepareSessionComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnMapRuntimeComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnResolveSpawnComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameLoadout OnGetLoadoutComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameLoadout OnSetLoadoutComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnClaimPickupComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnClaimEventComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGameShopCatalog OnShopCatalogComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGameShopSkuAccess OnShopSkuAccessComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGameSimpleComplete OnClaimFreeComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGameUnlockSku OnUnlockSkuComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGameShopProgress OnShopProgress;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGamePaymentVerify OnCompleteUnlockComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGamePaymentInitiate OnBuyComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGamePaymentVerify OnSubmitBillingComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGamePaymentVerify OnFinalizeSteamComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Shop")
+	FOnFastGamePaymentVerify OnVerifyPendingComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Ads")
+	FOnFastGameAdvertisement OnGetAdvertisementComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Ads")
+	FOnFastGameSimpleComplete OnTrackAdEventComplete;
+
+private:
+	bool EnsureClient(FString& OutError) const;
+	bool EnsureStoreSetup(FString& OutMessage) const;
+	void SyncNativeStorePublicKey();
+	void EnsureStoreVerifyKey(TFunction<void(bool, FString)>&& OnDone);
+	void SetShopProgress(EFastGameShopProgress Progress, bool bOwned, const FString& Message);
+	void HandleAppReactivated();
+	void RunShopProgress(TFunction<void(EFastGameShopProgress, bool, FString)>&& OnDone);
+	/** Marshal a callback to the game thread; no-ops if WeakThis is stale or Generation mismatches. */
+	static void DispatchToGameThread(
+		TWeakObjectPtr<UFastGameSubsystem> WeakThis,
+		int32 Generation,
+		TFunction<void(UFastGameSubsystem*)>&& Lambda);
+
+	friend struct FFastGameAdsBlueprintHelper;
+
+	void ApplyPersistedGameConfig();
+
+	TSharedPtr<FFastGameClient> Client;
+	FString StorePublicKey;
+	FString PersistedGameCode;
+	FString PersistedStorePlatformId;
+	/** Bumped on InitializeClient / Deinitialize so orphaned HTTP callbacks are ignored. */
+	int32 ClientGeneration = 0;
+	/** Store SKUs already queried this session (Access must not reopen Cafe Bazaar every tick). */
+	TSet<FString> NativeInventoryQueriedSkus;
+	EFastGameShopProgress LastShopProgress = EFastGameShopProgress::Failed;
+	bool bShopUnlockInFlight = false;
+	FDelegateHandle AppReactivatedHandle;
+	FDelegateHandle AppForegroundHandle;
+};
+
+/** Internal Blueprint ads helpers (friend of UFastGameSubsystem). */
+struct FFastGameAdsBlueprintHelper
+{
+	static void RequestAd(
+		UFastGameSubsystem* Self,
+		const FString& GameId,
+		const FString& Slot,
+		const FString& MediaType,
+		const FString& Format,
+		const TArray<FString>& Tags,
+		const FString& Locale,
+		const FString& Country,
+		const FString& Platform,
+		const FString& Engine,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		bool& bHasAd,
+		FFastGameBPAdvertisement& Ad,
+		TFunction<void(class FFastGameRequestLatentAction*)> BindExtraOutputs);
+
+	static void Track(
+		UFastGameSubsystem* Self,
+		const FString& EventType,
+		const FString& AdId,
+		const FString& GameId,
+		const FString& CampaignId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message);
+};

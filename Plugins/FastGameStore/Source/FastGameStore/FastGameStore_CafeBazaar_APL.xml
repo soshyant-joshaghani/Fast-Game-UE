@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+	<init>
+		<log text="Initializing FastGameStore Cafe Bazaar"/>
+	</init>
+
+	<androidManifestUpdates>
+		<setElement result="FastGameStoreActivity" value="activity" />
+		<addAttribute tag="$FastGameStoreActivity" name="android:name" value="com.fastgame.store.FastGameStoreActivity"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:theme" value="@style/Theme.FastGameStore"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:excludeFromRecents" value="true"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:launchMode" value="standard"/>
+		<addElement tag="application" name="FastGameStoreActivity" />
+	</androidManifestUpdates>
+
+	<gameActivityImportAdditions>
+		<insert>
+import com.fastgame.store.FastGameStoreActivity;
+		</insert>
+	</gameActivityImportAdditions>
+
+	<gameActivityClassAdditions>
+		<insert>
+		public void LaunchFastGameStore(boolean openTheStorePage, String storeProductId, String storePublicKey)
+		{
+			Intent intent = new Intent(GameActivity.this, FastGameStoreActivity.class);
+			intent.putExtra("openTheStorePage", openTheStorePage);
+			if (storeProductId != null)
+			{
+				if (storeProductId.length() > 0)
+				{
+					intent.putExtra("storeProductId", storeProductId);
+				}
+			}
+			if (storePublicKey != null)
+			{
+				if (storePublicKey.length() > 0)
+				{
+					intent.putExtra("storePublicKey", storePublicKey);
+				}
+			}
+			startActivity(intent);
+		}
+		</insert>
+	</gameActivityClassAdditions>
+
+	<proguardAdditions>
+		<insert>
+-keep class com.fastgame.store.FastGameStoreActivity { *; }
+		</insert>
+	</proguardAdditions>
+
+	<prebuildCopies>
+		<copyDir src="$S(PluginDir)/Java/cafebazaar" dst="$S(BuildDir)/src/com/fastgame/store" />
+		<copyDir src="$S(PluginDir)/Java/res/values" dst="$S(BuildDir)/res/values" />
+	</prebuildCopies>
+
+	<buildGradleAdditions>
+		<insert>
+			repositories {
+				google()
+				jcenter()
+				maven { url 'https://jitpack.io' }
+			}
+
+			apply plugin: 'kotlin-android'
+
+			android {
+				kotlinOptions {
+					jvmTarget = "1.8"
+				}
+			}
+
+			buildscript {
+				ext.kotlin_version = '1.8.21'
+			}
+
+			dependencies {
+				implementation "com.github.cafebazaar.Poolakey:poolakey:2.2.0"
+				implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.21"
+				implementation "androidx.activity:activity-ktx:1.7.0"
+			}
+		</insert>
+	</buildGradleAdditions>
+
+	<buildscriptGradleAdditions>
+		<insert>
+			dependencies {
+				classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.21"
+			}
+		</insert>
+	</buildscriptGradleAdditions>
+</root>

@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Fast Game Store",
+	"Description": "Official Fast Game Android store IAP (Myket / Cafe Bazaar / Google Play). Fast Game is the ownership source of truth.",
+	"Category": "Networking",
+	"CreatedBy": "Fast Game",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "FastGameStore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "FastGame",
+			"Enabled": true
+		}
+	]
+}

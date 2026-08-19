@@ -1,0 +1,23 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.6",
+  "Category": "Samples",
+  "Description": "Fast Game SDK — Unreal Engine 5.6.1 development project",
+  "Modules": [
+    {
+      "Name": "FastGameUE",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "FastGame",
+      "Enabled": true
+    },
+    {
+      "Name": "FastGameStore",
+      "Enabled": true
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+*.xcodeproj
+*.xcworkspace
+
+Plugins/colyseus-unreal/
+
+tests/.tools/
+tests/_compile_out/

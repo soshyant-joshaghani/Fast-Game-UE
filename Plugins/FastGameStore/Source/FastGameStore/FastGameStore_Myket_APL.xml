@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+	<init>
+		<log text="Initializing FastGameStore Myket"/>
+	</init>
+
+	<androidManifestUpdates>
+		<setElement result="FastGameStoreActivity" value="activity" />
+		<addAttribute tag="$FastGameStoreActivity" name="android:name" value="com.fastgame.store.FastGameStoreActivity"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:theme" value="@style/Theme.FastGameStore"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:excludeFromRecents" value="true"/>
+		<addAttribute tag="$FastGameStoreActivity" name="android:launchMode" value="standard"/>
+		<addElement tag="application" name="FastGameStoreActivity" />
+	</androidManifestUpdates>
+
+	<gameActivityImportAdditions>
+		<insert>
+import com.fastgame.store.FastGameStoreActivity;
+		</insert>
+	</gameActivityImportAdditions>
+
+	<gameActivityClassAdditions>
+		<insert>
+		public void LaunchFastGameStore(boolean openTheStorePage, String storeProductId, String storePublicKey)
+		{
+			Intent intent = new Intent(GameActivity.this, FastGameStoreActivity.class);
+			intent.putExtra("openTheStorePage", openTheStorePage);
+			if (storeProductId != null)
+			{
+				if (storeProductId.length() > 0)
+				{
+					intent.putExtra("storeProductId", storeProductId);
+				}
+			}
+			if (storePublicKey != null)
+			{
+				if (storePublicKey.length() > 0)
+				{
+					intent.putExtra("storePublicKey", storePublicKey);
+				}
+			}
+			startActivity(intent);
+		}
+		</insert>
+	</gameActivityClassAdditions>
+
+	<proguardAdditions>
+		<insert>
+-keep class com.fastgame.store.FastGameStoreActivity { *; }
+		</insert>
+	</proguardAdditions>
+
+	<prebuildCopies>
+		<copyDir src="$S(PluginDir)/Java/myket" dst="$S(BuildDir)/src/com/fastgame/store" />
+		<copyDir src="$S(PluginDir)/Java/res/values" dst="$S(BuildDir)/res/values" />
+	</prebuildCopies>
+
+	<buildGradleAdditions>
+		<insert>
+			repositories {
+				google()
+				jcenter()
+				maven { url 'https://jitpack.io' }
+			}
+
+			android {
+				defaultConfig {
+					def marketApplicationId = "ir.mservices.market"
+					def marketBindAddress = "ir.mservices.market.InAppBillingService.BIND"
+					manifestPlaceholders = [marketApplicationId: "${marketApplicationId}",
+						marketBindAddress: "${marketBindAddress}",
+						marketPermission: "${marketApplicationId}.BILLING"]
+				}
+			}
+
+			dependencies {
+				implementation 'com.github.myketstore:myket-billing-client:1.6'
+			}
+		</insert>
+	</buildGradleAdditions>
+</root>

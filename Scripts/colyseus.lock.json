@@ -1,0 +1,6 @@
+{
+  "repo": "https://github.com/charisma-ai/colyseus-unreal.git",
+  "ref": "main",
+  "dest": "Plugins/colyseus-unreal",
+  "submodules": true
+}
