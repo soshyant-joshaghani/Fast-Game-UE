@@ -4,7 +4,7 @@ Standalone **Unreal Engine 5.6.1** project for the official Fast Game client SDK
 
 | Item | Path |
 |------|------|
-| Project | `fast-game-ue.uproject` |
+| Project | `FastGameUE.uproject` |
 | Fast Game plugin | `Plugins/FastGame` |
 | Android IAP plugin | `Plugins/FastGameStore` |
 | Samples | `Samples/` |
@@ -15,7 +15,7 @@ Standalone **Unreal Engine 5.6.1** project for the official Fast Game client SDK
 
 ## Open
 
-1. Unreal Engine **5.6.1** → Open `fast-game-ue.uproject`
+1. Unreal Engine **5.6.1** → Open `FastGameUE.uproject`
 2. Allow plugin rebuild on first open
 3. Point **Initialize Client** at a running Fast Game API, e.g. `http://api.localhost/api/v1`
 

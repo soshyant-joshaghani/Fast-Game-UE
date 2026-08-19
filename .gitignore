@@ -9,6 +9,11 @@ Saved/
 *.xcworkspace
 
 Plugins/colyseus-unreal/
+Build/
+Content/Developers/
+Content/Collections/
+Content/__ExternalActors__/
+Content/__ExternalObjects__/
 
 tests/.tools/
 tests/_compile_out/

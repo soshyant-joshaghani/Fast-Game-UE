@@ -87,4 +87,4 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 
 Sync-Colyseus
 Write-Host ""
-Write-Host "Next: open fast-game-ue.uproject and enable plugin 'Colyseus' (colyseus-unreal) if not already enabled."
+Write-Host "Next: open FastGameUE.uproject and enable plugin 'Colyseus' (colyseus-unreal) if not already enabled."

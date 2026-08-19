@@ -10,7 +10,7 @@ For plugin API usage see [SDK.md](../SDK.md). For HTTP contracts see [CONTRACT.m
 
 | Status | Item |
 |--------|------|
-| **Exists** | UE **5.6.1** project (`fast-game-ue.uproject`) |
+| **Exists** | UE **5.6.1** project (`FastGameUE.uproject`) |
 | **Exists** | [`Plugins/FastGame`](../Plugins/FastGame) — FastAPI client (Blueprint + C++) |
 | **Exists** | [`Plugins/FastGameStore`](../Plugins/FastGameStore) — Android IAP (Myket / Cafe Bazaar / Google Play) |
 | **Exists** | [`Samples/`](../Samples/) — API-only + Colyseus join sketches |
@@ -84,7 +84,7 @@ The old `ue project configs.txt` draft described a **mobile-first, single-projec
 
 ```text
 fast-game-ue/                          Today          When game lands
-├── fast-game-ue.uproject              ✓              ✓
+├── FastGameUE.uproject              ✓              ✓
 ├── Config/                            minimal        platform DeviceProfiles, input, packaging
 ├── Source/FastGameUE/                 shell module   + PlatformService, game systems
 ├── Plugins/
