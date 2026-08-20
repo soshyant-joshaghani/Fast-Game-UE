@@ -48,13 +48,16 @@ namespace FastGameSubsystemLatent
 	static FSetup Register(
 		UFastGameSubsystem* Self,
 		FLatentActionInfo LatentInfo,
-		bool& bSuccess,
 		int32& StatusCode,
-		FString& Message)
+		FString& Message,
+		EFastGameRequestOutcome* OutcomeOut = nullptr)
 	{
-		bSuccess = false;
 		StatusCode = 0;
 		Message.Reset();
+		if (OutcomeOut)
+		{
+			*OutcomeOut = EFastGameRequestOutcome::Failed;
+		}
 
 		FSetup Setup;
 
@@ -72,11 +75,31 @@ namespace FastGameSubsystemLatent
 		}
 
 		Setup.Action = new FFastGameRequestLatentAction(LatentInfo, Setup.State);
-		Setup.Action->bSuccessOut = &bSuccess;
 		Setup.Action->StatusCodeOut = &StatusCode;
 		Setup.Action->MessageOut = &Message;
+		if (OutcomeOut)
+		{
+			Setup.Action->OutcomeOut = OutcomeOut;
+		}
 		LatentManager.AddNewAction(LatentInfo.CallbackTarget, LatentInfo.UUID, Setup.Action);
 		Setup.bRegistered = true;
+		return Setup;
+	}
+
+	/** Catalog / content / ads latents that still expose bSuccess for Branch. */
+	static FSetup RegisterWithSuccess(
+		UFastGameSubsystem* Self,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message)
+	{
+		bSuccess = false;
+		FSetup Setup = Register(Self, LatentInfo, StatusCode, Message);
+		if (Setup.bRegistered)
+		{
+			Setup.Action->bSuccessOut = &bSuccess;
+		}
 		return Setup;
 	}
 
@@ -85,7 +108,42 @@ namespace FastGameSubsystemLatent
 		State->bSuccess = bOk;
 		State->StatusCode = Code;
 		State->Message = Msg;
+		State->Outcome = bOk ? EFastGameRequestOutcome::Success : EFastGameRequestOutcome::Failed;
 		State->bFinished = true;
+	}
+
+	static EFastGameEnterPin EnterRouteToPin(EFastGameEnterRoute Route)
+	{
+		switch (Route)
+		{
+		case EFastGameEnterRoute::Login:
+			return EFastGameEnterPin::EnterPassword;
+		case EFastGameEnterRoute::CompleteAccount:
+		case EFastGameEnterRoute::Register:
+			return EFastGameEnterPin::Signup;
+		case EFastGameEnterRoute::VerifyId:
+			return EFastGameEnterPin::Verify;
+		case EFastGameEnterRoute::Failed:
+		default:
+			return EFastGameEnterPin::Failed;
+		}
+	}
+
+	static EFastGameShopAccessRoute ClassifyShopAccess(bool bOk, bool bOwned, bool bLocked)
+	{
+		if (!bOk)
+		{
+			return EFastGameShopAccessRoute::Failed;
+		}
+		if (bOwned)
+		{
+			return EFastGameShopAccessRoute::Owned;
+		}
+		if (bLocked)
+		{
+			return EFastGameShopAccessRoute::Locked;
+		}
+		return EFastGameShopAccessRoute::Available;
 	}
 
 	static void FinishErr(TSharedRef<FFastGameRequestLatentState> State, bool bOk, const FString& Err)
@@ -365,33 +423,6 @@ void UFastGameSubsystem::InitializeClient(
 	bSuccess = true;
 }
 
-void UFastGameSubsystem::InitializeClientAndGame(
-	const FString& ApiBaseUrl,
-	const FString& InGameCode,
-	EFastGameStorePlatform StorePlatform,
-	bool& bSuccess,
-	FString& Message)
-{
-	InitializeGame(InGameCode, StorePlatform, bSuccess, Message);
-	if (!bSuccess)
-	{
-		return;
-	}
-	FString NetMessage;
-	bool bNetOk = false;
-	InitializeClient(ApiBaseUrl, bNetOk, NetMessage);
-	if (!bNetOk)
-	{
-		bSuccess = false;
-		Message = NetMessage;
-		return;
-	}
-	if (Message.IsEmpty())
-	{
-		Message = NetMessage;
-	}
-}
-
 void UFastGameSubsystem::SetStorePublicKey(const FString& PublicKey)
 {
 	StorePublicKey = PublicKey.TrimStartAndEnd();
@@ -464,14 +495,13 @@ bool UFastGameSubsystem::IsAuthenticated() const
 
 void UFastGameSubsystem::CheckAuthentication(
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameAuthCheck& Check,
 	int32& StatusCode,
-	FString& Message,
-	bool& bAuthenticated)
+	FString& Message)
 {
-	bAuthenticated = false;
+	Check = EFastGameAuthCheck::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -481,7 +511,7 @@ void UFastGameSubsystem::CheckAuthentication(
 		return;
 	}
 
-	Setup.Action->bAuthenticatedOut = &bAuthenticated;
+	Setup.Action->AuthCheckOut = &Check;
 
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 
@@ -489,13 +519,14 @@ void UFastGameSubsystem::CheckAuthentication(
 	if (!EnsureClient(Err))
 	{
 		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
+		State->AuthCheck = EFastGameAuthCheck::Failed;
 		FastGameSubsystemLatent::FinishStatus(State, false, 0, Err);
 		return;
 	}
 
 	if (!Client->Auth->IsLoggedIn())
 	{
-		State->bAuthenticated = false;
+		State->AuthCheck = EFastGameAuthCheck::NotAuthenticated;
 		FastGameSubsystemLatent::SetLastRequest(this, 401, TEXT("Not authenticated"));
 		FastGameSubsystemLatent::FinishStatus(State, true, 401, TEXT("Not authenticated"));
 		return;
@@ -507,12 +538,10 @@ void UFastGameSubsystem::CheckAuthentication(
 	{
 		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Code, InMessage, State]()
 		{
-			bool Authed = bOk;
 			if (UFastGameSubsystem* S = WeakThis.Get())
 			{
 				if (!bOk && S->Client.IsValid())
 				{
-					// Stale / invalid token — drop it so Is Authenticated reflects reality.
 					S->Client->Auth->Logout();
 				}
 				if (S->ClientGeneration == Gen)
@@ -520,9 +549,8 @@ void UFastGameSubsystem::CheckAuthentication(
 					FastGameSubsystemLatent::SetLastRequest(S, Code, InMessage);
 				}
 			}
-			State->bAuthenticated = Authed;
-			// bSuccess = check completed; Branch on bAuthenticated for the session gate.
-			FastGameSubsystemLatent::FinishStatus(State, true, Code > 0 ? Code : (Authed ? 200 : 401), InMessage);
+			State->AuthCheck = bOk ? EFastGameAuthCheck::Authenticated : EFastGameAuthCheck::NotAuthenticated;
+			FastGameSubsystemLatent::FinishStatus(State, true, Code > 0 ? Code : (bOk ? 200 : 401), InMessage);
 		});
 	});
 }
@@ -605,8 +633,7 @@ void UFastGameSubsystem::Enter(
 	const FString& Identity,
 	EFastGameIdentityChannel Channel,
 	FLatentActionInfo LatentInfo,
-	EFastGameEnterRoute& Route,
-	bool& bSuccess,
+	EFastGameEnterPin& Pin,
 	FString& Message,
 	FString& OutIdentity,
 	FString& OutEmail,
@@ -614,7 +641,7 @@ void UFastGameSubsystem::Enter(
 	bool& bOutEmail,
 	bool& bOutPhone)
 {
-	Route = EFastGameEnterRoute::Failed;
+	Pin = EFastGameEnterPin::Failed;
 	OutIdentity.Reset();
 	OutEmail.Reset();
 	OutPhone.Reset();
@@ -622,7 +649,7 @@ void UFastGameSubsystem::Enter(
 	bOutPhone = false;
 
 	int32 StatusCode = 0;
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -632,7 +659,7 @@ void UFastGameSubsystem::Enter(
 		return;
 	}
 
-	Setup.Action->EnterRouteOut = &Route;
+	Setup.Action->EnterPinOut = &Pin;
 	Setup.Action->OutIdentityOut = &OutIdentity;
 	Setup.Action->EmailOut = &OutEmail;
 	Setup.Action->PhoneOut = &OutPhone;
@@ -653,6 +680,7 @@ void UFastGameSubsystem::Enter(
 			}
 		}
 		State->EnterRoute = InRoute;
+		State->EnterPin = FastGameSubsystemLatent::EnterRouteToPin(InRoute);
 		State->OutIdentity = InIdentity;
 		State->Email = InEmail;
 		State->Phone = InPhone;
@@ -725,11 +753,12 @@ void UFastGameSubsystem::Login(
 	const FString& Password,
 	EFastGameIdentityChannel Channel,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -788,7 +817,7 @@ void UFastGameSubsystem::Signup(
 	const FString& PasswordConfirm,
 	const FString& FullName,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& UserId,
 	FString& OutEmail,
@@ -798,8 +827,9 @@ void UFastGameSubsystem::Signup(
 	UserId.Reset();
 	OutEmail.Reset();
 	OutPhone.Reset();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -819,217 +849,60 @@ void UFastGameSubsystem::Signup(
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	auto Finish = [State](bool bOk, int32 Code, const FString& InUserId, const FString& InEmail, const FString& InPhone, const FString& InMessage)
 	{
-		State->bSuccess = bOk;
-		State->StatusCode = Code;
 		State->UserId = InUserId;
 		State->Email = InEmail;
 		State->Phone = InPhone;
-		State->Message = InMessage;
-		State->bFinished = true;
-	};
-
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		bLastSignupSucceeded = false;
-		bLastLoginSucceeded = false;
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnSignupComplete.Broadcast(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
-		Finish(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
-		return;
-	}
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName,
-		[WeakThis, Gen, Finish](bool bOk, int32 Code, FString InUserId, FString InEmail, FString InPhone, FString Token, FString InMessage)
-		{
-			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Code, InUserId, InEmail, InPhone, Token, InMessage, Finish]()
-			{
-				if (UFastGameSubsystem* S = WeakThis.Get())
-				{
-					if (bOk && !Token.IsEmpty() && S->Client.IsValid())
-					{
-						S->Client->Auth->SetAccessToken(Token);
-					}
-					if (S->ClientGeneration == Gen)
-					{
-						S->bLastSignupSucceeded = bOk;
-						S->bLastLoginSucceeded = bOk;
-						FastGameSubsystemLatent::SetLastRequest(S, Code, InMessage);
-						S->OnSignupComplete.Broadcast(bOk, Code, InUserId, InEmail, InPhone, InMessage);
-						if (bOk)
-						{
-							S->OnLoginComplete.Broadcast(true, Code, TEXT(""));
-						}
-					}
-				}
-				Finish(bOk, Code, InUserId, InEmail, InPhone, InMessage);
-			});
-		});
-}
-
-void UFastGameSubsystem::CompleteAccount(
-	const FString& Email,
-	const FString& Phone,
-	const FString& Password,
-	const FString& PasswordConfirm,
-	const FString& FullName,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& UserId,
-	FString& OutEmail,
-	FString& OutPhone,
-	FString& Message)
-{
-	UserId.Reset();
-	OutEmail.Reset();
-	OutPhone.Reset();
-
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		if (!Message.IsEmpty())
-		{
-			bLastSignupSucceeded = false;
-			bLastLoginSucceeded = false;
-			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
-			OnSignupComplete.Broadcast(false, 0, TEXT(""), TEXT(""), TEXT(""), Message);
-		}
-		return;
-	}
-
-	Setup.Action->UserIdOut = &UserId;
-	Setup.Action->EmailOut = &OutEmail;
-	Setup.Action->PhoneOut = &OutPhone;
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	auto Finish = [State](bool bOk, int32 Code, const FString& InUserId, const FString& InEmail, const FString& InPhone, const FString& InMessage)
-	{
-		State->bSuccess = bOk;
-		State->StatusCode = Code;
-		State->UserId = InUserId;
-		State->Email = InEmail;
-		State->Phone = InPhone;
-		State->Message = InMessage;
-		State->bFinished = true;
-	};
-
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		bLastSignupSucceeded = false;
-		bLastLoginSucceeded = false;
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnSignupComplete.Broadcast(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
-		Finish(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
-		return;
-	}
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Auth->CompleteAccount(Email, Phone, Password, PasswordConfirm, FullName,
-		[WeakThis, Gen, Finish](bool bOk, int32 Code, FString InUserId, FString InEmail, FString InPhone, FString Token, FString InMessage)
-		{
-			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Code, InUserId, InEmail, InPhone, Token, InMessage, Finish]()
-			{
-				if (UFastGameSubsystem* S = WeakThis.Get())
-				{
-					if (bOk && !Token.IsEmpty() && S->Client.IsValid())
-					{
-						S->Client->Auth->SetAccessToken(Token);
-					}
-					if (S->ClientGeneration == Gen)
-					{
-						S->bLastSignupSucceeded = bOk;
-						S->bLastLoginSucceeded = bOk;
-						FastGameSubsystemLatent::SetLastRequest(S, Code, InMessage);
-						S->OnSignupComplete.Broadcast(bOk, Code, InUserId, InEmail, InPhone, InMessage);
-						if (bOk)
-						{
-							S->OnLoginComplete.Broadcast(true, Code, TEXT(""));
-						}
-					}
-				}
-				Finish(bOk, Code, InUserId, InEmail, InPhone, InMessage);
-			});
-		});
-}
-
-void UFastGameSubsystem::RequestPasswordRecovery(
-	const FString& Identity,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message)
-{
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		return;
-	}
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	auto Finish = [State](bool bOk, int32 Code, const FString& InMessage)
-	{
 		FastGameSubsystemLatent::FinishStatus(State, bOk, Code, InMessage);
 	};
 
 	FString Err;
 	if (!EnsureClient(Err))
 	{
+		bLastSignupSucceeded = false;
+		bLastLoginSucceeded = false;
 		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		Finish(false, 0, Err);
+		OnSignupComplete.Broadcast(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
+		Finish(false, 0, TEXT(""), TEXT(""), TEXT(""), Err);
 		return;
 	}
 
-	Client->Auth->RequestPasswordRecovery(Identity,
-		[Finish](bool bOk, int32 Code, FString InMessage)
+	const int32 Gen = ClientGeneration;
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	auto OnDone = [WeakThis, Gen, Finish](bool bOk, int32 Code, FString InUserId, FString InEmail, FString InPhone, FString Token, FString InMessage)
+	{
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Code, InUserId, InEmail, InPhone, Token, InMessage, Finish]()
 		{
-			AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+			if (UFastGameSubsystem* S = WeakThis.Get())
 			{
-				Finish(bOk, Code, InMessage);
-			});
+				if (bOk && !Token.IsEmpty() && S->Client.IsValid())
+				{
+					S->Client->Auth->SetAccessToken(Token);
+				}
+				if (S->ClientGeneration == Gen)
+				{
+					S->bLastSignupSucceeded = bOk;
+					S->bLastLoginSucceeded = bOk;
+					FastGameSubsystemLatent::SetLastRequest(S, Code, InMessage);
+					S->OnSignupComplete.Broadcast(bOk, Code, InUserId, InEmail, InPhone, InMessage);
+					if (bOk)
+					{
+						S->OnLoginComplete.Broadcast(true, Code, TEXT(""));
+					}
+				}
+			}
+			Finish(bOk, Code, InUserId, InEmail, InPhone, InMessage);
 		});
-}
-
-void UFastGameSubsystem::VerifyPasswordRecovery(
-	const FString& Identity,
-	const FString& Code,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message)
-{
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		return;
-	}
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	auto Finish = [State](bool bOk, int32 Status, const FString& InMessage)
-	{
-		FastGameSubsystemLatent::FinishStatus(State, bOk, Status, InMessage);
 	};
 
-	FString Err;
-	if (!EnsureClient(Err))
+	// Seeded password_required: same credentials UI, /complete under the hood.
+	if (LastEnterRoute == EFastGameEnterRoute::CompleteAccount)
 	{
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		Finish(false, 0, Err);
-		return;
+		Client->Auth->CompleteAccount(Email, Phone, Password, PasswordConfirm, FullName, OnDone);
 	}
-
-	Client->Auth->VerifyPasswordRecovery(Identity, Code,
-		[Finish](bool bOk, int32 Status, FString InMessage)
-		{
-			AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
-			{
-				Finish(bOk, Status, InMessage);
-			});
-		});
+	else
+	{
+		Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName, OnDone);
+	}
 }
 
 void UFastGameSubsystem::ConfirmPasswordRecovery(
@@ -1037,11 +910,12 @@ void UFastGameSubsystem::ConfirmPasswordRecovery(
 	const FString& NewPassword,
 	const FString& NewPasswordConfirm,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		return;
@@ -1072,14 +946,15 @@ void UFastGameSubsystem::ConfirmPasswordRecovery(
 		});
 }
 
-void UFastGameSubsystem::RequestSignupVerification(
+void UFastGameSubsystem::SendAuthCode(
 	const FString& Identity,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		return;
@@ -1099,25 +974,44 @@ void UFastGameSubsystem::RequestSignupVerification(
 		return;
 	}
 
-	Client->Auth->RequestSignupVerification(Identity,
-		[Finish](bool bOk, int32 Code, FString InMessage)
-		{
-			AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
+	{
+		Client->Auth->RequestSignupVerification(Identity,
+			[Finish](bool bOk, int32 Code, FString InMessage)
 			{
-				Finish(bOk, Code, InMessage);
+				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+				{
+					Finish(bOk, Code, InMessage);
+				});
 			});
-		});
+		return;
+	}
+	if (bForgotPassword)
+	{
+		Client->Auth->RequestPasswordRecovery(Identity,
+			[Finish](bool bOk, int32 Code, FString InMessage)
+			{
+				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+				{
+					Finish(bOk, Code, InMessage);
+				});
+			});
+		return;
+	}
+	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Send Auth Code: use after Verify or Begin Forgot"));
+	Finish(false, 0, TEXT("Send Auth Code: use after Verify or Begin Forgot"));
 }
 
-void UFastGameSubsystem::VerifySignupVerification(
+void UFastGameSubsystem::VerifyAuthCode(
 	const FString& Identity,
 	const FString& Code,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		return;
@@ -1137,67 +1031,32 @@ void UFastGameSubsystem::VerifySignupVerification(
 		return;
 	}
 
-	Client->Auth->VerifySignupVerification(Identity, Code,
-		[Finish](bool bOk, int32 Status, FString InMessage)
-		{
-			AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
+	{
+		Client->Auth->VerifySignupVerification(Identity, Code,
+			[Finish](bool bOk, int32 Status, FString InMessage)
 			{
-				Finish(bOk, Status, InMessage);
+				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+				{
+					Finish(bOk, Status, InMessage);
+				});
 			});
-		});
-}
-
-void UFastGameSubsystem::SendAuthCode(
-	const FString& Identity,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message)
-{
-	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
-	{
-		RequestSignupVerification(Identity, LatentInfo, bSuccess, StatusCode, Message);
 		return;
 	}
 	if (bForgotPassword)
 	{
-		RequestPasswordRecovery(Identity, LatentInfo, bSuccess, StatusCode, Message);
+		Client->Auth->VerifyPasswordRecovery(Identity, Code,
+			[Finish](bool bOk, int32 Status, FString InMessage)
+			{
+				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+				{
+					Finish(bOk, Status, InMessage);
+				});
+			});
 		return;
 	}
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		return;
-	}
-	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Send Auth Code: use after Verify Id or Begin Forgot"));
-	FastGameSubsystemLatent::FinishStatus(Setup.State, false, 0, TEXT("Send Auth Code: use after Verify Id or Begin Forgot"));
-}
-
-void UFastGameSubsystem::VerifyAuthCode(
-	const FString& Identity,
-	const FString& Code,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message)
-{
-	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
-	{
-		VerifySignupVerification(Identity, Code, LatentInfo, bSuccess, StatusCode, Message);
-		return;
-	}
-	if (bForgotPassword)
-	{
-		VerifyPasswordRecovery(Identity, Code, LatentInfo, bSuccess, StatusCode, Message);
-		return;
-	}
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		return;
-	}
-	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Verify Auth Code: use after Verify Id or Begin Forgot"));
-	FastGameSubsystemLatent::FinishStatus(Setup.State, false, 0, TEXT("Verify Auth Code: use after Verify Id or Begin Forgot"));
+	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Verify Auth Code: use after Verify or Begin Forgot"));
+	Finish(false, 0, TEXT("Verify Auth Code: use after Verify or Begin Forgot"));
 }
 
 bool UFastGameSubsystem::IsEmailIdentity(const FString& Identity)
@@ -1212,14 +1071,15 @@ bool UFastGameSubsystem::IsPhoneIdentity(const FString& Identity)
 
 void UFastGameSubsystem::GetMe(
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FFastGameBPUser& User,
 	FString& Message)
 {
 	User = FFastGameBPUser();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1235,11 +1095,8 @@ void UFastGameSubsystem::GetMe(
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	auto Finish = [State](bool bOk, int32 Code, const FFastGameBPUser& InUser, const FString& InMessage)
 	{
-		State->bSuccess = bOk;
-		State->StatusCode = Code;
 		State->User = InUser;
-		State->Message = InMessage;
-		State->bFinished = true;
+		FastGameSubsystemLatent::FinishStatus(State, bOk, Code, InMessage);
 	};
 
 	FString Err;
@@ -1286,14 +1143,15 @@ void UFastGameSubsystem::GetMe(
 void UFastGameSubsystem::UpdateFullName(
 	const FString& FullName,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FFastGameBPUser& User,
 	FString& Message)
 {
 	User = FFastGameBPUser();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1309,11 +1167,8 @@ void UFastGameSubsystem::UpdateFullName(
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	auto Finish = [State](bool bOk, int32 Code, const FFastGameBPUser& InUser, const FString& InMessage)
 	{
-		State->bSuccess = bOk;
-		State->StatusCode = Code;
 		State->User = InUser;
-		State->Message = InMessage;
-		State->bFinished = true;
+		FastGameSubsystemLatent::FinishStatus(State, bOk, Code, InMessage);
 	};
 
 	FString Err;
@@ -1361,7 +1216,7 @@ void UFastGameSubsystem::LinkSteamWithTicket(
 	const FString& Ticket,
 	const FString& Identity,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message,
 	bool& bLinked,
@@ -1369,8 +1224,9 @@ void UFastGameSubsystem::LinkSteamWithTicket(
 {
 	bLinked = false;
 	SteamId.Reset();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1421,7 +1277,7 @@ void UFastGameSubsystem::LinkSteamWithTicket(
 
 void UFastGameSubsystem::GetSteamStatus(
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message,
 	bool& bLinked,
@@ -1429,8 +1285,9 @@ void UFastGameSubsystem::GetSteamStatus(
 {
 	bLinked = false;
 	SteamId.Reset();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1480,11 +1337,12 @@ void UFastGameSubsystem::GetSteamStatus(
 
 void UFastGameSubsystem::UnlinkSteam(
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1539,7 +1397,7 @@ void UFastGameSubsystem::ListGames(
 {
 	Games.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1599,7 +1457,7 @@ void UFastGameSubsystem::GetGame(
 {
 	Game = FFastGameBPCatalogDetail();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1656,7 +1514,7 @@ void UFastGameSubsystem::GetGameServer(
 {
 	Url.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1715,7 +1573,7 @@ void UFastGameSubsystem::ListCharacters(
 {
 	Characters.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1784,7 +1642,7 @@ void UFastGameSubsystem::PrepareSession(
 {
 	Session = FFastGameBPPreparedSession();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1845,7 +1703,7 @@ void UFastGameSubsystem::GetMapRuntime(
 {
 	JsonBody.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1907,7 +1765,7 @@ void UFastGameSubsystem::ResolveSpawn(
 {
 	JsonBody.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -1965,7 +1823,7 @@ void UFastGameSubsystem::GetLoadout(
 {
 	Loadout = FFastGameBPLoadout();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2026,7 +1884,7 @@ void UFastGameSubsystem::SetLoadout(
 {
 	Loadout = FFastGameBPLoadout();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2087,7 +1945,7 @@ void UFastGameSubsystem::ClaimPickup(
 {
 	JsonBody.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2146,7 +2004,7 @@ void UFastGameSubsystem::ClaimEvent(
 {
 	JsonBody.Reset();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2204,14 +2062,15 @@ void UFastGameSubsystem::GetShopCatalog(
 	const FString& Lang,
 	bool bExpandI18n,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message,
 	TArray<FFastGameBPShopLine>& Lines)
 {
 	Lines.Reset();
+	Outcome = EFastGameRequestOutcome::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2286,16 +2145,13 @@ void UFastGameSubsystem::GetShopSkuAccess(
 	const FString& SkuKind,
 	const FString& SkuId,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameShopAccessRoute& Access,
 	int32& StatusCode,
-	FString& Message,
-	bool& bLocked,
-	bool& bOwned)
+	FString& Message)
 {
-	bLocked = false;
-	bOwned = false;
+	Access = EFastGameShopAccessRoute::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2306,8 +2162,7 @@ void UFastGameSubsystem::GetShopSkuAccess(
 		return;
 	}
 
-	Setup.Action->bLockedOut = &bLocked;
-	Setup.Action->bOwnedOut = &bOwned;
+	Setup.Action->ShopAccessRouteOut = &Access;
 
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	FString Err;
@@ -2315,6 +2170,7 @@ void UFastGameSubsystem::GetShopSkuAccess(
 	{
 		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
 		OnShopSkuAccessComplete.Broadcast(false, false, false, Err);
+		State->ShopAccessRoute = EFastGameShopAccessRoute::Failed;
 		FastGameSubsystemLatent::FinishErr(State, false, Err);
 		return;
 	}
@@ -2371,7 +2227,10 @@ void UFastGameSubsystem::GetShopSkuAccess(
 					}
 					State->bLocked = LockedInner;
 					State->bOwned = OwnedInner;
-					FastGameSubsystemLatent::FinishStatus(State, bOkInner && Msg.IsEmpty(), Code, Msg);
+					const bool bAccessOk = bOkInner && Msg.IsEmpty();
+					State->ShopAccessRoute = FastGameSubsystemLatent::ClassifyShopAccess(
+						bAccessOk, OwnedInner, LockedInner);
+					FastGameSubsystemLatent::FinishStatus(State, bAccessOk, Code, Msg);
 				});
 			};
 
@@ -2478,11 +2337,12 @@ void UFastGameSubsystem::ClaimFree(
 	const FString& SkuKind,
 	const FString& SkuId,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2529,11 +2389,12 @@ void UFastGameSubsystem::RedeemCode(
 	const FString& GameCode,
 	const FString& Code,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameRequestOutcome& Outcome,
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	Outcome = EFastGameRequestOutcome::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2583,16 +2444,15 @@ void UFastGameSubsystem::UnlockSku(
 	const FString& CallbackUrl,
 	const FString& DiscountCode,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameShopProgress& Progress,
 	int32& StatusCode,
 	FString& Message,
-	bool& bOwned,
 	FFastGameBPShopUnlock& Pending)
 {
-	bOwned = false;
 	Pending = FFastGameBPShopUnlock();
+	Progress = EFastGameShopProgress::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -2603,11 +2463,12 @@ void UFastGameSubsystem::UnlockSku(
 				FastGameBlueprintConvert::ClassifyShopProgress(false, false, false, Message),
 				false,
 				Message);
+			Progress = LastShopProgress;
 		}
 		return;
 	}
 
-	Setup.Action->bOwnedOut = &bOwned;
+	Setup.Action->ShopProgressOut = &Progress;
 	Setup.Action->UnlockOut = &Pending;
 
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
@@ -2624,10 +2485,9 @@ void UFastGameSubsystem::UnlockSku(
 	{
 		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
 		OnUnlockSkuComplete.Broadcast(false, false, Pending, Err);
-		SetShopProgress(
-			FastGameBlueprintConvert::ClassifyShopProgress(false, false, false, Err),
-			false,
-			Err);
+		const EFastGameShopProgress Prog = FastGameBlueprintConvert::ClassifyShopProgress(false, false, false, Err);
+		SetShopProgress(Prog, false, Err);
+		State->ShopProgress = Prog;
 		FastGameSubsystemLatent::FinishErr(State, false, Err);
 		return;
 	}
@@ -2655,10 +2515,9 @@ void UFastGameSubsystem::UnlockSku(
 			Host->bShopUnlockInFlight = false;
 			FastGameSubsystemLatent::SetLastRequest(Host, 0, SetupErr);
 			Host->OnUnlockSkuComplete.Broadcast(false, false, FFastGameBPShopUnlock(), SetupErr);
-			Host->SetShopProgress(
-				FastGameBlueprintConvert::ClassifyShopProgress(false, false, false, SetupErr),
-				false,
-				SetupErr);
+			const EFastGameShopProgress Prog = FastGameBlueprintConvert::ClassifyShopProgress(false, false, false, SetupErr);
+			Host->SetShopProgress(Prog, false, SetupErr);
+			State->ShopProgress = Prog;
 			FastGameSubsystemLatent::FinishErr(State, false, SetupErr);
 			return;
 		}
@@ -2680,6 +2539,8 @@ void UFastGameSubsystem::UnlockSku(
 				{
 					State->Unlock = FastGameBlueprintConvert::ToBP(Unlock);
 					State->bOwned = Unlock.bOwned;
+					State->ShopProgress = FastGameBlueprintConvert::ClassifyShopProgress(
+						Unlock.bOwned, Unlock.bPending, bOk, Msg);
 					FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
 					return;
 				}
@@ -2690,13 +2551,12 @@ void UFastGameSubsystem::UnlockSku(
 					S->bShopUnlockInFlight = false;
 					FastGameSubsystemLatent::SetLastRequest(S, CodeInner, MsgInner);
 					S->OnUnlockSkuComplete.Broadcast(bOkInner, bOwnedInner, PendingInner, MsgInner);
-					S->SetShopProgress(
-						FastGameBlueprintConvert::ClassifyShopProgress(
-							bOwnedInner, PendingInner.bPending, bOkInner, MsgInner),
-						bOwnedInner,
-						MsgInner);
+					const EFastGameShopProgress Prog = FastGameBlueprintConvert::ClassifyShopProgress(
+						bOwnedInner, PendingInner.bPending, bOkInner, MsgInner);
+					S->SetShopProgress(Prog, bOwnedInner, MsgInner);
 					State->Unlock = PendingInner;
 					State->bOwned = bOwnedInner;
+					State->ShopProgress = Prog;
 					FastGameSubsystemLatent::FinishStatus(State, bOkInner, CodeInner, MsgInner);
 				};
 
@@ -2750,6 +2610,7 @@ void UFastGameSubsystem::UnlockSku(
 							if (!Self || Self->ClientGeneration != Gen || !Self->Client.IsValid())
 							{
 								State->Unlock = Bp;
+								State->ShopProgress = EFastGameShopProgress::Failed;
 								FastGameSubsystemLatent::FinishStatus(State, false, 0, TEXT("FastGame destroyed"));
 								return;
 							}
@@ -2778,6 +2639,7 @@ void UFastGameSubsystem::UnlockSku(
 								Self->OnUnlockSkuComplete.Broadcast(false, false, Bp, EmptyMsg);
 								Self->SetShopProgress(Progress, false, EmptyMsg);
 								State->Unlock = Bp;
+								State->ShopProgress = Progress;
 								FastGameSubsystemLatent::FinishStatus(State, false, 0, EmptyMsg);
 								return;
 							}
@@ -2822,11 +2684,14 @@ void UFastGameSubsystem::UnlockSku(
 													CompMsg);
 												State->Unlock = Out;
 												State->bOwned = bOwnedInner;
+												State->ShopProgress = Done->LastShopProgress;
 												FastGameSubsystemLatent::FinishStatus(State, bCompOk && bOwnedInner, CompCode, CompMsg);
 												return;
 											}
 										}
 										State->bOwned = bOwnedInner;
+										State->ShopProgress = FastGameBlueprintConvert::ClassifyShopProgress(
+											bOwnedInner, false, bCompOk && bOwnedInner, CompMsg);
 										FastGameSubsystemLatent::FinishStatus(State, bCompOk && bOwnedInner, CompCode, CompMsg);
 									});
 								});
@@ -2840,25 +2705,25 @@ void UFastGameSubsystem::UnlockSku(
 void UFastGameSubsystem::CompleteUnlock(
 	const FString& PurchaseToken,
 	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
+	EFastGameShopProgress& Progress,
 	int32& StatusCode,
-	FString& Message,
-	bool& bOwned)
+	FString& Message)
 {
-	bOwned = false;
+	Progress = EFastGameShopProgress::Failed;
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
 		{
 			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
 			OnCompleteUnlockComplete.Broadcast(false, false, Message);
+			Progress = LastShopProgress;
 		}
 		return;
 	}
 
-	Setup.Action->bOwnedOut = &bOwned;
+	Setup.Action->ShopProgressOut = &Progress;
 
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	FString Err;
@@ -2890,11 +2755,16 @@ void UFastGameSubsystem::CompleteUnlock(
 				{
 					FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
 					S->OnCompleteUnlockComplete.Broadcast(bOk, Owned, Error);
-					S->SetShopProgress(
-						FastGameBlueprintConvert::ClassifyShopProgress(Owned, false, bOk, Msg.IsEmpty() ? Error : Msg),
-						Owned,
-						Msg.IsEmpty() ? Error : Msg);
+					const EFastGameShopProgress Prog = FastGameBlueprintConvert::ClassifyShopProgress(
+						Owned, false, bOk, Msg.IsEmpty() ? Error : Msg);
+					S->SetShopProgress(Prog, Owned, Msg.IsEmpty() ? Error : Msg);
+					State->ShopProgress = Prog;
 				}
+			}
+			else
+			{
+				State->ShopProgress = FastGameBlueprintConvert::ClassifyShopProgress(
+					Owned, false, bOk, Msg.IsEmpty() ? Error : Msg);
 			}
 			State->bOwned = Owned;
 			FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
@@ -2971,21 +2841,17 @@ void UFastGameSubsystem::RunShopProgress(TFunction<void(EFastGameShopProgress, b
 void UFastGameSubsystem::ShopProgress(
 	FLatentActionInfo LatentInfo,
 	EFastGameShopProgress& Progress,
-	bool& bOwned,
 	FString& Message)
 {
 	Progress = LastShopProgress;
-	bOwned = false;
 	Message.Empty();
 
-	bool bSuccess = false;
 	int32 StatusCode = 0;
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		return;
 	}
-	Setup.Action->bOwnedOut = &bOwned;
 	Setup.Action->ShopProgressOut = &Progress;
 
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
@@ -3005,259 +2871,6 @@ void UFastGameSubsystem::ShopProgress(
 		const bool bOk = ProgressInner == EFastGameShopProgress::Success
 			|| ProgressInner == EFastGameShopProgress::Pending;
 		FastGameSubsystemLatent::FinishStatus(State, bOk, bOk ? 200 : 0, MsgInner);
-	});
-}
-
-void UFastGameSubsystem::Buy(
-	const FString& GameCode,
-	const FString& SkuKind,
-	const FString& SkuId,
-	const FString& CallbackUrl,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message,
-	FFastGameBPPaymentInitiate& Payment)
-{
-	BuyWithProvider(GameCode, SkuKind, SkuId, CallbackUrl, TEXT("zarinpal"), TEXT("rial"),
-		LatentInfo, bSuccess, StatusCode, Message, Payment);
-}
-
-void UFastGameSubsystem::BuyWithProvider(
-	const FString& GameCode,
-	const FString& SkuKind,
-	const FString& SkuId,
-	const FString& CallbackUrl,
-	const FString& Provider,
-	const FString& Currency,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message,
-	FFastGameBPPaymentInitiate& Payment)
-{
-	Payment = FFastGameBPPaymentInitiate();
-
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		if (!Message.IsEmpty())
-		{
-			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
-			OnBuyComplete.Broadcast(false, Payment, Message);
-		}
-		return;
-	}
-
-	Setup.Action->PaymentOut = &Payment;
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnBuyComplete.Broadcast(false, FFastGameBPPaymentInitiate(), Err);
-		FastGameSubsystemLatent::FinishErr(State, false, Err);
-		return;
-	}
-
-	FFastGameShopLine Native;
-	Native.GameCode = GameCode;
-	Native.SkuKind = SkuKind;
-	Native.SkuId = SkuId;
-	Native.Label = SkuId;
-	Native.Price = 0;
-	Native.bOwned = false;
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Shop->BuyWithProvider(Native, CallbackUrl, Provider, Currency,
-		[WeakThis, Gen, State](bool bOk, FFastGamePaymentInitiate Pay, FString Error)
-		{
-			FFastGameBPPaymentInitiate Bp = FastGameBlueprintConvert::ToBP(Pay);
-			int32 Code = 0;
-			FString Msg;
-			FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
-			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Bp = MoveTemp(Bp), Error, Code, Msg, State]() mutable
-			{
-				if (UFastGameSubsystem* S = WeakThis.Get())
-				{
-					if (S->ClientGeneration == Gen)
-					{
-						FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
-						S->OnBuyComplete.Broadcast(bOk, Bp, Error);
-					}
-				}
-				State->Payment = Bp;
-				FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
-			});
-		});
-}
-
-void UFastGameSubsystem::SubmitBilling(
-	const FString& PurchaseToken,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message,
-	bool& bPaymentSuccess)
-{
-	bPaymentSuccess = false;
-
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		if (!Message.IsEmpty())
-		{
-			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
-			OnSubmitBillingComplete.Broadcast(false, false, Message);
-		}
-		return;
-	}
-
-	Setup.Action->bPaymentSuccessOut = &bPaymentSuccess;
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnSubmitBillingComplete.Broadcast(false, false, Err);
-		FastGameSubsystemLatent::FinishErr(State, false, Err);
-		return;
-	}
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Shop->SubmitBilling(PurchaseToken, [WeakThis, Gen, State](bool bOk, bool bPayOk, FString Error)
-	{
-		int32 Code = 0;
-		FString Msg;
-		FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
-		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, bPayOk, Error, Code, Msg, State]()
-		{
-			if (UFastGameSubsystem* S = WeakThis.Get())
-			{
-				if (S->ClientGeneration == Gen)
-				{
-					FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
-					S->OnSubmitBillingComplete.Broadcast(bOk, bPayOk, Error);
-				}
-			}
-			State->bPaymentSuccess = bPayOk;
-			FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
-		});
-	});
-}
-
-void UFastGameSubsystem::FinalizeSteam(
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message,
-	bool& bPaymentSuccess)
-{
-	bPaymentSuccess = false;
-
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		if (!Message.IsEmpty())
-		{
-			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
-			OnFinalizeSteamComplete.Broadcast(false, false, Message);
-		}
-		return;
-	}
-
-	Setup.Action->bPaymentSuccessOut = &bPaymentSuccess;
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnFinalizeSteamComplete.Broadcast(false, false, Err);
-		FastGameSubsystemLatent::FinishErr(State, false, Err);
-		return;
-	}
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Shop->FinalizeSteam([WeakThis, Gen, State](bool bOk, bool bPayOk, FString Error)
-	{
-		int32 Code = 0;
-		FString Msg;
-		FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
-		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, bPayOk, Error, Code, Msg, State]()
-		{
-			if (UFastGameSubsystem* S = WeakThis.Get())
-			{
-				if (S->ClientGeneration == Gen)
-				{
-					FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
-					S->OnFinalizeSteamComplete.Broadcast(bOk, bPayOk, Error);
-				}
-			}
-			State->bPaymentSuccess = bPayOk;
-			FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
-		});
-	});
-}
-
-void UFastGameSubsystem::VerifyPending(
-	const FString& AuthorityOverride,
-	FLatentActionInfo LatentInfo,
-	bool& bSuccess,
-	int32& StatusCode,
-	FString& Message,
-	bool& bPaymentSuccess)
-{
-	bPaymentSuccess = false;
-
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, bSuccess, StatusCode, Message);
-	if (!Setup.bRegistered)
-	{
-		if (!Message.IsEmpty())
-		{
-			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
-			OnVerifyPendingComplete.Broadcast(false, false, Message);
-		}
-		return;
-	}
-
-	Setup.Action->bPaymentSuccessOut = &bPaymentSuccess;
-
-	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	FString Err;
-	if (!EnsureClient(Err))
-	{
-		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		OnVerifyPendingComplete.Broadcast(false, false, Err);
-		FastGameSubsystemLatent::FinishErr(State, false, Err);
-		return;
-	}
-
-	const int32 Gen = ClientGeneration;
-	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Shop->VerifyPending(AuthorityOverride, [WeakThis, Gen, State](bool bOk, bool bPayOk, FString Error)
-	{
-		int32 Code = 0;
-		FString Msg;
-		FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
-		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, bPayOk, Error, Code, Msg, State]()
-		{
-			if (UFastGameSubsystem* S = WeakThis.Get())
-			{
-				if (S->ClientGeneration == Gen)
-				{
-					FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
-					S->OnVerifyPendingComplete.Broadcast(bOk, bPayOk, Error);
-				}
-			}
-			State->bPaymentSuccess = bPayOk;
-			FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
-		});
 	});
 }
 
@@ -3291,7 +2904,7 @@ void FFastGameAdsBlueprintHelper::RequestAd(
 	bHasAd = false;
 	Ad = FFastGameBPAdvertisement();
 
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(Self, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(Self, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())
@@ -3378,7 +2991,7 @@ void FFastGameAdsBlueprintHelper::Track(
 	int32& StatusCode,
 	FString& Message)
 {
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(Self, LatentInfo, bSuccess, StatusCode, Message);
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(Self, LatentInfo, bSuccess, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		if (!Message.IsEmpty())

@@ -36,19 +36,19 @@ The plugin exposes **`UFastGameSubsystem`** (Game Instance subsystem, display na
 
 ### Auth notes
 
-- **Enter** (ENTER contract): latent node with exec pins **Login** / **Complete Account** / **Verify Id** / **Register** / **Failed** (**breaking** — refresh the Enter node). Inputs: `Identity`, **Channel** enum (`Auto` / `Email` / `Phone`). On success, **stores** `OutIdentity` under `Saved/FastGame/FastGameEnteredIdentity.txt` and sets **Last Enter Route**. Outputs: `OutIdentity`, `OutEmail` / `OutPhone`, `bOutEmail` / `bOutPhone`, `bSuccess`, `Message`. **No widgets**.
-  - exists + has password → **Login**
-  - exists + no password → **Complete Account** (no OTP)
-  - new + verify ON for client GameCode → **Verify Id**
-  - new + verify OFF → **Register**
-- **Forgot is not an Enter pin.** Put **Begin Forgot** on the Login widget; then **Send Auth Code** / **Verify Auth Code** use recovery OTP and **Set Password** (`Confirm Password Recovery`).
-- **Login** / **Register** (`Signup`) / **Complete Account** / recovery / signup OTP: leave **Identity** (or Email+Phone) **empty** to use the ENTER-stored identity — same as Unity.
-- **Send Auth Code** / **Verify Auth Code**: empty Identity → ENTER store; **Verify Id** → signup OTP; **Begin Forgot** → recovery OTP; otherwise fail clearly. Do not call recovery for new users or Register for existing users.
+- **Enter** (ENTER contract): latent node with exec pins **Enter Password** / **Verify** / **Signup** / **Failed** (**breaking** — refresh the Enter node). Inputs: `Identity`, **Channel** enum (`Auto` / `Email` / `Phone`). On success, **stores** `OutIdentity` under `Saved/FastGame/FastGameEnteredIdentity.txt` and sets **Last Enter Route**. Outputs: `OutIdentity`, `OutEmail` / `OutPhone`, `bOutEmail` / `bOutPhone`, `Message`. **No widgets**.
+  - exists + has password → **Enter Password**
+  - exists + no password (seeded) → **Signup** pin (LastEnterRoute stays CompleteAccount; **Register** calls `/complete`)
+  - new + verify ON for client GameCode → **Verify**
+  - new + verify OFF → **Signup**
+- **Forgot is not an Enter pin.** Put **Begin Forgot** on the Enter Password widget; then **Send Auth Code** / **Verify Auth Code** use recovery OTP and **Set Password**.
+- Auth HTTP latents expose **Success** | **Failed** exec pins (`EFastGameRequestOutcome`) — no separate `bSuccess` Branch. Keep StatusCode / Message.
+- **Login** / **Register** (`Signup`) / recovery OTP: leave **Identity** (or Email+Phone) **empty** to use the ENTER-stored identity — same as Unity.
+- **Send Auth Code** / **Verify Auth Code**: empty Identity → ENTER store; **Verify** → signup OTP; **Begin Forgot** → recovery OTP; otherwise fail clearly.
 - **Login** takes `Identity` (optional), `Password`, **Channel**. Empty `Identity` → ENTER store.
-- **Register** (`Signup`) takes **Email** / **Phone** (optional after Enter), **Password** + **Password Confirm**, optional **Full Name**. Both Email+Phone empty → ENTER store. New users only.
-- **Complete Account** takes **Password** + **Password Confirm**, optional **Full Name** — passwordless existing users only (no OTP).
-- **Update Full Name** (`PATCH /me`) after login — display name only.
-- **Request / Verify / Confirm Password Recovery**: empty `Identity` → ENTER store. Confirm has **no Code pin** and **no Full Name**. Use after **Begin Forgot** only.
+- **Register** (`Signup`) takes **Email** / **Phone** (optional after Enter), **Password** + **Password Confirm**, optional **Full Name**. Both Email+Phone empty → ENTER store. Dispatches `/signup` or `/complete` from LastEnterRoute.
+- **Update Full Name** (`PATCH /me`) after login — display name only (Success | Failed).
+- **Set Password**: empty `Identity` → ENTER store. No Code pin and no Full Name. Use after **Begin Forgot** + Verify Auth Code only.
 - **Clear Entered Identity** clears the store and forgot flag; **Clear Local Cache** also clears it.
 - Helpers: **Is Email Identity** / **Is Phone Identity**. **Set Game Code** / **Get Game Code** if the active title changes after init.
 
@@ -56,31 +56,33 @@ Example flow:
 
 ```text
 InitializeGame(GameCode, StorePlatform) → InitializeClient(ApiBaseUrl) → Enter(Identity, Channel=Auto) → stores OutIdentity + LastEnterRoute
-  Login            → Login(/*Identity empty*/, Password, Channel)
-                   → Begin Forgot → Send Auth Code → Verify Auth Code → Set Password
-  Complete Account → Complete Account(/*empty*/, Password, Confirm, Full Name)
-  Verify Id        → Send Auth Code(/*empty*/) → Verify Auth Code(/*empty*/, Code) → Register
-  Register         → Signup(/*Email+Phone empty*/, Password, Confirm, Full Name)
+  Enter Password → Login(/*Identity empty*/, Password, Channel) → Success | Failed
+                 → Begin Forgot → Send Auth Code → Verify Auth Code → Set Password → Success | Failed
+  Verify         → Send Auth Code → Verify Auth Code → Register(name+password) → Success | Failed
+  Signup         → Register(name+password) → Success | Failed
+                   (seeded users: same form; SDK calls /complete)
+  Failed         → error UI
 Clear Entered Identity when leaving auth / switching accounts
+After login (optional): Update Full Name → Success | Failed
 ```
 
 ```text
-InitializeGame → InitializeClient → Enter / Login / Signup → **Is Authenticated** or **Check Authentication** → Branch
-  → Branch(bSuccess) → GetMe (latent) → Branch → bind User / CurrentUser to widgets
+InitializeGame → InitializeClient → Enter / Login / Register → **Is Authenticated** or **Check Authentication** → Authenticated | Not Authenticated | Failed
+  → Get Me → Success | Failed → bind User / CurrentUser to widgets
   → PrepareSession (latent) → Branch → Session.ColyseusRoom, MapRuntimeJson, SpawnJson
   → GetGameServer (latent) → sibling Colyseus JoinOrCreate
 ```
 
-Forgot password (Login screen only, 3 steps):
+Forgot password (Enter Password screen only):
 
 ```text
-BeginForgot → RequestPasswordRecovery(/*Identity empty after Enter*/)
-           → VerifyPasswordRecovery(/*Identity empty*/, Code)
-           → ConfirmPasswordRecovery(/*Identity empty*/, NewPassword, NewPasswordConfirm)
+BeginForgot → Send Auth Code(/*Identity empty after Enter*/) → Success | Failed
+           → Verify Auth Code(/*Identity empty*/, Code) → Success | Failed
+           → Set Password(/*Identity empty*/, NewPassword, Confirm) → Success | Failed
 → auto-login (same as Register)
 ```
 
-**Register** (`Signup`) and **Complete Account** create/set credentials then log in. All latent HTTP nodes wait for the response then expose **b Success** for Branch; **Last Auth Status Code** / **Last Auth Message** reflect the most recent request.
+**Register** creates/sets credentials then logs in (including seeded complete). Latent auth/shop nodes use scenario exec pins only (no redundant `bSuccess` / `bOwned` / `bLocked`). **Last Auth Status Code** / **Last Auth Message** reflect the most recent request.
 Dev tool: **Clear Local Cache** wipes the saved access token and pending-payment file.
 The access token is saved under `Saved/FastGame/FastGameAccessToken.txt` and restored on **Initialize Client**. **Logout** / **Clear Local Cache** delete it.
 
@@ -132,11 +134,15 @@ InitializeGame(GameCode, CafeBazaar)   // or Myket / GooglePlay — OS install c
 → (existing auth: Enter then Login empty ID, or Login with filled ID)
    Fast Game phone + store email wallet is fine
    RSA is fetched from Editor after login — leave Set Store Public Key empty
-→ Unlock Sku (map, full_game, CallbackUrl empty on store APKs)
-→ Branch(bOwned) → Open Level
+→ Get Shop Sku Access → Owned | Available | Locked | Failed
+→ Available → Unlock Sku → Purchase Successful | Pending | Failed | Cancelled | Store Missing
+→ Pending → Shop Progress or Complete Unlock → same progress pins
+→ Purchase Successful → Open Level
 ```
 
-ZarinPal/Steam: Unlock Sku then **Complete Unlock** after return/overlay. `caffebazar` checks Cafe Bazaar (`com.farsitel.bazaar`). Missing store → `bSuccess=false`, never fake owned. Flavors: `Plugins/FastGameStore/Source/FastGameStore/Java/`. See [Plugins/FastGameStore/README.md](Plugins/FastGameStore/README.md). iOS later: [Plugins/FastGameStore/iOS/README.md](Plugins/FastGameStore/iOS/README.md).
+Claim Free / Redeem Code / Get Shop Catalog → **Success** | **Failed**.
+
+ZarinPal/Steam: Unlock Sku then **Complete Unlock** after return/overlay. `caffebazar` checks Cafe Bazaar (`com.farsitel.bazaar`). Missing store → **Store Missing** pin, never fake owned. Flavors: `Plugins/FastGameStore/Source/FastGameStore/Java/`. See [Plugins/FastGameStore/README.md](Plugins/FastGameStore/README.md). iOS later: [Plugins/FastGameStore/iOS/README.md](Plugins/FastGameStore/iOS/README.md).
 
 Empty shop **GameCode** / **Provider** pins use **Initialize Game** (same pattern as Enter empty Identity). Unlock Sku has no Provider pin — it always uses Initialize Game StorePlatform. **Get Shop Sku Access** also queries Myket/Cafe Bazaar/Google Play inventory (no purchase UI) and restores Fast Game ownership if the store already owns the SKU. Login freezes the current store wallet (`POST …/shop/store-lock`) so switching Myket/Cafe Bazaar mid-session cannot restore another account’s IAPs. Buy on one store APK → same Fast Game login is `owned` on the other (see [fast-game/docs/sdk-shop-flows.md](../fast-game/docs/sdk-shop-flows.md)).
 

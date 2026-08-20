@@ -35,8 +35,14 @@ def test_ue_unlock_and_ensure_setup():
     assert "FastGameUnwrapStoreVerifyKey" in _read(
         UE / "Source/FastGame/Private/FastGameStoreVerify.cpp"
     )
-    for deprecated in ("Buy With Provider", "Submit Billing", "VerifyPending", "FinalizeSteam"):
-        assert "DeprecatedFunction" in header
+    for removed in (
+        "Buy With Provider",
+        "Submit Billing",
+        "VerifyPending",
+        "FinalizeSteam",
+        'DisplayName = "Buy"',
+    ):
+        assert removed not in header
 
 
 def test_ue_initialize_game_vs_client():
@@ -44,7 +50,8 @@ def test_ue_initialize_game_vs_client():
     cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
     assert "Initialize Game" in header
     assert "void UFastGameSubsystem::InitializeGame" in cpp
-    assert "void UFastGameSubsystem::InitializeClientAndGame" in cpp
+    assert "InitializeClientAndGame" not in header
+    assert "void UFastGameSubsystem::InitializeClientAndGame" not in cpp
     game_fn = cpp[
         cpp.find("void UFastGameSubsystem::InitializeGame") : cpp.find(
             "void UFastGameSubsystem::InitializeClient("
@@ -52,7 +59,7 @@ def test_ue_initialize_game_vs_client():
     ]
     client_fn = cpp[
         cpp.find("void UFastGameSubsystem::InitializeClient(") : cpp.find(
-            "void UFastGameSubsystem::InitializeClientAndGame"
+            "void UFastGameSubsystem::SetStorePublicKey"
         )
     ]
     assert "EnsureStoreSetup" in game_fn
@@ -61,8 +68,6 @@ def test_ue_initialize_game_vs_client():
     assert "CarryToken" in client_fn
     assert "ClearEnteredIdentity" not in client_fn
     assert "Logout" not in client_fn
-    assert "DeprecatedFunction" in header
-    assert "DeprecationMessage" in header
 
 
 def test_ue_enter_identity_not_on_initialize_client():
@@ -111,6 +116,62 @@ def test_ue_shop_access_queries_store():
     ]
     assert "RestoreUnlock" in access_fn
     assert "unlock/restore" in shop
+
+
+def test_ue_auth_shop_scenario_exec_pins():
+    types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    header = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
+    latent = _read(UE / "Source/FastGame/Private/FastGameLatentActions.h")
+
+    assert "EFastGameRequestOutcome" in types
+    assert "EFastGameEnterPin" in types
+    assert "EFastGameAuthCheck" in types
+    assert "EFastGameShopAccessRoute" in types
+    assert 'EnterPassword UMETA(DisplayName = "Enter Password")' in types
+    assert 'Signup UMETA(DisplayName = "Signup")' in types
+    assert "Owned UMETA" in types and "Available UMETA" in types
+    assert 'Authenticated UMETA(DisplayName = "Authenticated")' in types
+
+    assert 'ExpandEnumAsExecs = "Pin"' in header
+    assert 'DisplayName = "Enter"' in header
+    assert 'ExpandEnumAsExecs = "Outcome"' in header
+    assert 'ExpandEnumAsExecs = "Check"' in header
+    assert 'DisplayName = "Login"' in header
+    assert 'DisplayName = "Send Auth Code"' in header
+    assert 'DisplayName = "Update Full Name"' in header
+    assert 'DisplayName = "Unlock Sku"' in header
+    assert 'ExpandEnumAsExecs = "Progress"' in header
+    assert 'ExpandEnumAsExecs = "Access"' in header
+    assert 'DisplayName = "Get Shop Sku Access"' in header
+
+    # Legacy Blueprint nodes removed (C++ client may still have CompleteAccount)
+    assert 'DisplayName = "Complete Account"' not in header
+    assert "Request Password Recovery" not in header
+    assert "Request Signup Verification" not in header
+    assert "DeprecatedFunction" not in header
+
+    # Scenario nodes: no redundant bool& bSuccess / bOwned / bLocked pins
+    login = header[header.find("void Login(") : header.find("void ClearEnteredIdentity(")]
+    assert "bool& bSuccess" not in login
+    unlock = header[header.find("void UnlockSku(") : header.find("void CompleteUnlock(")]
+    assert "bool& bSuccess" not in unlock
+    assert "bool& bOwned" not in unlock
+    access = header[
+        header.find("void GetShopSkuAccess(") : header.find("bool IsShopLineLocked(")
+    ]
+    assert "bool& bLocked" not in access
+    assert "bool& bOwned" not in access
+    assert "bool& bSuccess" not in access
+
+    assert "EnterRouteToPin" in cpp
+    assert "ClassifyShopAccess" in cpp
+    assert "LastEnterRoute == EFastGameEnterRoute::CompleteAccount" in cpp
+    assert "Client->Auth->CompleteAccount" in cpp
+    assert "OutcomeOut" in latent
+    assert "EnterPinOut" in latent
+    assert "AuthCheckOut" in latent
+    assert "ShopAccessRouteOut" in latent
 
 
 def test_ue_shop_empty_pins_use_initialize_game():

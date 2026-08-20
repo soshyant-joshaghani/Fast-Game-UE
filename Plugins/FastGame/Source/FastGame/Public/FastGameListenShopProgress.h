@@ -7,8 +7,8 @@
 
 class UFastGameSubsystem;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-	FFastGameShopProgressOutput, bool, bOwned, const FString&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FFastGameShopProgressOutput, const FString&, Message);
 
 /**
  * Blueprint "Event Shop Progress": call once (BeginPlay). Exec pins fire whenever

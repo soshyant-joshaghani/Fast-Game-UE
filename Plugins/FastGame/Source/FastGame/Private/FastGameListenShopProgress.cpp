@@ -30,7 +30,7 @@ void UFastGameListenShopProgress::Activate()
 	UFastGameSubsystem* Shop = ResolveSubsystem();
 	if (!Shop)
 	{
-		PurchaseFailed.Broadcast(false, TEXT("FastGame: Event Shop Progress needs a world / Game Instance"));
+		PurchaseFailed.Broadcast(TEXT("FastGame: Event Shop Progress needs a world / Game Instance"));
 		return;
 	}
 	BoundSubsystem = Shop;
@@ -53,19 +53,19 @@ void UFastGameListenShopProgress::HandleShopProgress(
 	switch (Progress)
 	{
 	case EFastGameShopProgress::Success:
-		PurchaseSuccessful.Broadcast(bOwned, Message);
+		PurchaseSuccessful.Broadcast(Message);
 		break;
 	case EFastGameShopProgress::Pending:
-		PurchasePending.Broadcast(bOwned, Message);
+		PurchasePending.Broadcast(Message);
 		break;
 	case EFastGameShopProgress::Cancelled:
-		PurchaseCancelled.Broadcast(bOwned, Message);
+		PurchaseCancelled.Broadcast(Message);
 		break;
 	case EFastGameShopProgress::StoreMissing:
-		StoreMissing.Broadcast(bOwned, Message);
+		StoreMissing.Broadcast(Message);
 		break;
 	default:
-		PurchaseFailed.Broadcast(bOwned, Message);
+		PurchaseFailed.Broadcast(Message);
 		break;
 	}
 }

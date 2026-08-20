@@ -44,8 +44,12 @@ struct FFastGameRequestLatentState
 	bool bHasAd = false;
 	FFastGameBPAdvertisement Ad;
 
-	// Enter
+	// Enter / request outcome / shop access
 	EFastGameEnterRoute EnterRoute = EFastGameEnterRoute::Failed;
+	EFastGameEnterPin EnterPin = EFastGameEnterPin::Failed;
+	EFastGameRequestOutcome Outcome = EFastGameRequestOutcome::Failed;
+	EFastGameAuthCheck AuthCheck = EFastGameAuthCheck::Failed;
+	EFastGameShopAccessRoute ShopAccessRoute = EFastGameShopAccessRoute::Failed;
 	EFastGameShopProgress ShopProgress = EFastGameShopProgress::Failed;
 	FString OutIdentity;
 	bool bOutEmail = false;
@@ -99,6 +103,10 @@ public:
 	int32* MediaWidthOut = nullptr;
 	int32* MediaHeightOut = nullptr;
 	EFastGameEnterRoute* EnterRouteOut = nullptr;
+	EFastGameEnterPin* EnterPinOut = nullptr;
+	EFastGameRequestOutcome* OutcomeOut = nullptr;
+	EFastGameAuthCheck* AuthCheckOut = nullptr;
+	EFastGameShopAccessRoute* ShopAccessRouteOut = nullptr;
 	EFastGameShopProgress* ShopProgressOut = nullptr;
 	FString* OutIdentityOut = nullptr;
 	bool* bOutEmailOut = nullptr;
@@ -153,6 +161,10 @@ public:
 			if (MediaWidthOut) *MediaWidthOut = State->Ad.MediaWidth;
 			if (MediaHeightOut) *MediaHeightOut = State->Ad.MediaHeight;
 			if (EnterRouteOut) *EnterRouteOut = State->EnterRoute;
+			if (EnterPinOut) *EnterPinOut = State->EnterPin;
+			if (OutcomeOut) *OutcomeOut = State->Outcome;
+			if (AuthCheckOut) *AuthCheckOut = State->AuthCheck;
+			if (ShopAccessRouteOut) *ShopAccessRouteOut = State->ShopAccessRoute;
 			if (ShopProgressOut) *ShopProgressOut = State->ShopProgress;
 			if (OutIdentityOut) *OutIdentityOut = State->OutIdentity;
 			if (bOutEmailOut) *bOutEmailOut = State->bOutEmail;

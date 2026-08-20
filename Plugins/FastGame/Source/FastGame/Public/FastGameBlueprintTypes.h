@@ -441,14 +441,57 @@ enum class EFastGameIdentityChannel : uint8
 	Phone UMETA(DisplayName = "Phone"),
 };
 
-/** ENTER contract route — ExpandEnumAsExecs on the Enter latent node (no widgets). */
+/**
+ * Internal ENTER route (LastEnterRoute). CompleteAccount is folded into the Signup
+ * Blueprint pin but kept here so Register can call /complete for seeded users.
+ */
 UENUM(BlueprintType)
 enum class EFastGameEnterRoute : uint8
 {
-	Login UMETA(DisplayName = "Login"),
+	Login UMETA(DisplayName = "Enter Password"),
 	CompleteAccount UMETA(DisplayName = "Complete Account"),
-	VerifyId UMETA(DisplayName = "Verify Id"),
-	Register UMETA(DisplayName = "Register"),
+	VerifyId UMETA(DisplayName = "Verify"),
+	Register UMETA(DisplayName = "Signup"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
+/**
+ * Designer Enter exec pins (ExpandEnumAsExecs). Seeded password_required fires Signup;
+ * LastEnterRoute remains CompleteAccount for Register dispatch.
+ */
+UENUM(BlueprintType)
+enum class EFastGameEnterPin : uint8
+{
+	EnterPassword UMETA(DisplayName = "Enter Password"),
+	Verify UMETA(DisplayName = "Verify"),
+	Signup UMETA(DisplayName = "Signup"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
+/** Success | Failed exec pins for latent auth / simple shop nodes. */
+UENUM(BlueprintType)
+enum class EFastGameRequestOutcome : uint8
+{
+	Success UMETA(DisplayName = "Success"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
+/** Check Authentication exec pins (session gate). */
+UENUM(BlueprintType)
+enum class EFastGameAuthCheck : uint8
+{
+	Authenticated UMETA(DisplayName = "Authenticated"),
+	NotAuthenticated UMETA(DisplayName = "Not Authenticated"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
+/** Get Shop Sku Access exec pins. */
+UENUM(BlueprintType)
+enum class EFastGameShopAccessRoute : uint8
+{
+	Owned UMETA(DisplayName = "Owned"),
+	Available UMETA(DisplayName = "Available"),
+	Locked UMETA(DisplayName = "Locked"),
 	Failed UMETA(DisplayName = "Failed"),
 };
 
