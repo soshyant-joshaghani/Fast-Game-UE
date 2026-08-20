@@ -18,3 +18,4 @@ Content/__ExternalObjects__/
 
 tests/.tools/
 tests/_compile_out/
+.vsconfig
