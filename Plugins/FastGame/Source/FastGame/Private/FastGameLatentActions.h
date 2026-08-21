@@ -48,6 +48,7 @@ struct FFastGameRequestLatentState
 	EFastGameEnterRoute EnterRoute = EFastGameEnterRoute::Failed;
 	EFastGameEnterPin EnterPin = EFastGameEnterPin::Failed;
 	EFastGameRequestOutcome Outcome = EFastGameRequestOutcome::Failed;
+	EFastGameVerifyAuthPin VerifyAuthPin = EFastGameVerifyAuthPin::Failed;
 	EFastGameAuthCheck AuthCheck = EFastGameAuthCheck::Failed;
 	EFastGameShopAccessRoute ShopAccessRoute = EFastGameShopAccessRoute::Failed;
 	EFastGameShopProgress ShopProgress = EFastGameShopProgress::Failed;
@@ -105,6 +106,7 @@ public:
 	EFastGameEnterRoute* EnterRouteOut = nullptr;
 	EFastGameEnterPin* EnterPinOut = nullptr;
 	EFastGameRequestOutcome* OutcomeOut = nullptr;
+	EFastGameVerifyAuthPin* VerifyAuthPinOut = nullptr;
 	EFastGameAuthCheck* AuthCheckOut = nullptr;
 	EFastGameShopAccessRoute* ShopAccessRouteOut = nullptr;
 	EFastGameShopProgress* ShopProgressOut = nullptr;
@@ -163,6 +165,7 @@ public:
 			if (EnterRouteOut) *EnterRouteOut = State->EnterRoute;
 			if (EnterPinOut) *EnterPinOut = State->EnterPin;
 			if (OutcomeOut) *OutcomeOut = State->Outcome;
+			if (VerifyAuthPinOut) *VerifyAuthPinOut = State->VerifyAuthPin;
 			if (AuthCheckOut) *AuthCheckOut = State->AuthCheck;
 			if (ShopAccessRouteOut) *ShopAccessRouteOut = State->ShopAccessRoute;
 			if (ShopProgressOut) *ShopProgressOut = State->ShopProgress;

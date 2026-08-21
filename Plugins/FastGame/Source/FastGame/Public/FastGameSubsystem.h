@@ -121,7 +121,7 @@ public:
 	 * Channel: Auto (detect), Email, or Phone.
 	 * Pins: Enter Password | Verify | Signup | Failed.
 	 * Seeded password_required fires Signup (LastEnterRoute stays CompleteAccount for Register).
-	 * Forgot is a Login-screen button (Begin Forgot), not an Enter pin.
+	 * Forgot: from Enter Password call Send Auth Code (recovery OTP) — no Begin Forgot node.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
 		ExpandEnumAsExecs = "Pin", DisplayName = "Enter"))
@@ -166,16 +166,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Get Entered Channel"))
 	EFastGameIdentityChannel GetEnteredChannel() const;
 
-	/** Last Enter route (Unity LastEnterRoute) — used by Send/Verify Auth Code and Register dispatch. */
+	/** Last Enter route — drives Send/Verify Auth Code and Register dispatch. */
 	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Get Last Enter Route"))
 	EFastGameEnterRoute GetLastEnterRoute() const { return LastEnterRoute; }
-
-	UFUNCTION(BlueprintPure, Category = "FastGame|Auth", meta = (DisplayName = "Is Forgot Password"))
-	bool IsForgotPassword() const { return bForgotPassword; }
-
-	/** From Login screen: next Send/Verify Auth Code uses recovery OTP, then Set Password. */
-	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Begin Forgot"))
-	void BeginForgot();
 
 	/**
 	 * Signup credentials (+ auto-login). Email and/or Phone empty → ENTER store.
@@ -199,12 +192,12 @@ public:
 		FString& Message);
 
 	/**
-	 * Forgot password — set new password (password + confirm, no name).
-	 * Empty Identity → ENTER store. Use after Begin Forgot + Verify Auth Code.
+	 * Assign new password after forgot OTP (password + confirm, no name).
+	 * Empty Identity → ENTER store. Wire from Verify Auth Code → Assign New Password.
 	 * Pins: Success | Failed.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
-		ExpandEnumAsExecs = "Outcome", DisplayName = "Set Password"))
+		ExpandEnumAsExecs = "Outcome", DisplayName = "Assign New Password"))
 	void ConfirmPasswordRecovery(
 		const FString& Identity,
 		const FString& NewPassword,
@@ -216,7 +209,7 @@ public:
 
 	/**
 	 * Shared OTP send. Empty Identity → ENTER store.
-	 * Verify → signup OTP; Begin Forgot → recovery OTP; otherwise fails.
+	 * Enter → Verify → signup OTP; Enter Password → recovery OTP (forgot); otherwise fails.
 	 * Pins: Success | Failed.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
@@ -230,16 +223,16 @@ public:
 
 	/**
 	 * Shared OTP verify. Empty Identity → ENTER store.
-	 * Verify → signup verify; Begin Forgot → recovery verify; otherwise fails.
-	 * Pins: Success | Failed.
+	 * Pins: Signup | Assign New Password | Failed.
+	 * Signup → Register (name + password); Assign New Password → Assign New Password node.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
-		ExpandEnumAsExecs = "Outcome", DisplayName = "Verify Auth Code"))
+		ExpandEnumAsExecs = "Pin", DisplayName = "Verify Auth Code"))
 	void VerifyAuthCode(
 		const FString& Identity,
 		const FString& Code,
 		FLatentActionInfo LatentInfo,
-		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
+		UPARAM(DisplayName = "Pin") EFastGameVerifyAuthPin& Pin,
 		int32& StatusCode,
 		FString& Message);
 
@@ -788,10 +781,6 @@ public:
 	/** Route from the most recent Enter (drives Send/Verify Auth Code). */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
 	EFastGameEnterRoute LastEnterRoute = EFastGameEnterRoute::Failed;
-
-	/** True after Begin Forgot until the next Enter / Clear Entered Identity. */
-	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
-	bool bForgotPassword = false;
 
 	/** Cached profile from the last successful GetMe — bind Text / Image widgets to fields. */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")

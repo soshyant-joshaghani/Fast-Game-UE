@@ -476,6 +476,18 @@ enum class EFastGameRequestOutcome : uint8
 	Failed UMETA(DisplayName = "Failed"),
 };
 
+/**
+ * Verify Auth Code exec pins after a successful OTP check.
+ * Signup → Register (name + password); Assign New Password → Assign New Password node (password only).
+ */
+UENUM(BlueprintType)
+enum class EFastGameVerifyAuthPin : uint8
+{
+	Signup UMETA(DisplayName = "Signup"),
+	AssignNewPassword UMETA(DisplayName = "Assign New Password"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
 /** Check Authentication exec pins (session gate). */
 UENUM(BlueprintType)
 enum class EFastGameAuthCheck : uint8

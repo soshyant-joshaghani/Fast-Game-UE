@@ -41,15 +41,16 @@ The plugin exposes **`UFastGameSubsystem`** (Game Instance subsystem, display na
   - exists + no password (seeded) → **Signup** pin (LastEnterRoute stays CompleteAccount; **Register** calls `/complete`)
   - new + verify ON for client GameCode → **Verify**
   - new + verify OFF → **Signup**
-- **Forgot is not an Enter pin.** Put **Begin Forgot** on the Enter Password widget; then **Send Auth Code** / **Verify Auth Code** use recovery OTP and **Set Password**.
+- **Forgot is not an Enter pin.** From the **Enter Password** screen call **Send Auth Code** (recovery OTP). **Verify Auth Code** then fires **Assign New Password**.
 - Auth HTTP latents expose **Success** | **Failed** exec pins (`EFastGameRequestOutcome`) — no separate `bSuccess` Branch. Keep StatusCode / Message.
 - **Login** / **Register** (`Signup`) / recovery OTP: leave **Identity** (or Email+Phone) **empty** to use the ENTER-stored identity — same as Unity.
-- **Send Auth Code** / **Verify Auth Code**: empty Identity → ENTER store; **Verify** → signup OTP; **Begin Forgot** → recovery OTP; otherwise fail clearly.
+- **Send Auth Code**: empty Identity → ENTER store; Enter → **Verify** → signup OTP; Enter Password → recovery OTP.
+- **Verify Auth Code** pins: **Signup** | **Assign New Password** | **Failed** (wire to Register or Assign New Password).
 - **Login** takes `Identity` (optional), `Password`, **Channel**. Empty `Identity` → ENTER store.
 - **Register** (`Signup`) takes **Email** / **Phone** (optional after Enter), **Password** + **Password Confirm**, optional **Full Name**. Both Email+Phone empty → ENTER store. Dispatches `/signup` or `/complete` from LastEnterRoute.
 - **Update Full Name** (`PATCH /me`) after login — display name only (Success | Failed).
-- **Set Password**: empty `Identity` → ENTER store. No Code pin and no Full Name. Use after **Begin Forgot** + Verify Auth Code only.
-- **Clear Entered Identity** clears the store and forgot flag; **Clear Local Cache** also clears it.
+- **Assign New Password**: empty `Identity` → ENTER store. No Code pin and no Full Name. Wire from Verify Auth Code → Assign New Password.
+- **Clear Entered Identity** clears the store; **Clear Local Cache** also clears it.
 - Helpers: **Is Email Identity** / **Is Phone Identity**. **Set Game Code** / **Get Game Code** if the active title changes after init.
 
 Example flow:
@@ -57,8 +58,8 @@ Example flow:
 ```text
 InitializeGame(GameCode, StorePlatform) → InitializeClient(ApiBaseUrl) → Enter(Identity, Channel=Auto) → stores OutIdentity + LastEnterRoute
   Enter Password → Login(/*Identity empty*/, Password, Channel) → Success | Failed
-                 → Begin Forgot → Send Auth Code → Verify Auth Code → Set Password → Success | Failed
-  Verify         → Send Auth Code → Verify Auth Code → Register(name+password) → Success | Failed
+                 → Send Auth Code → Verify Auth Code → Assign New Password → Assign New Password node → Success | Failed
+  Verify         → Send Auth Code → Verify Auth Code → Signup → Register(name+password) → Success | Failed
   Signup         → Register(name+password) → Success | Failed
                    (seeded users: same form; SDK calls /complete)
   Failed         → error UI
@@ -73,12 +74,12 @@ InitializeGame → InitializeClient → Enter / Login / Register → **Is Authen
   → GetGameServer (latent) → sibling Colyseus JoinOrCreate
 ```
 
-Forgot password (Enter Password screen only):
+Forgot password (from Enter Password screen):
 
 ```text
-BeginForgot → Send Auth Code(/*Identity empty after Enter*/) → Success | Failed
-           → Verify Auth Code(/*Identity empty*/, Code) → Success | Failed
-           → Set Password(/*Identity empty*/, NewPassword, Confirm) → Success | Failed
+Send Auth Code(/*Identity empty after Enter*/) → Success | Failed
+→ Verify Auth Code(/*Identity empty*/, Code) → Assign New Password | Failed
+→ Assign New Password(/*Identity empty*/, NewPassword, Confirm) → Success | Failed
 → auto-login (same as Register)
 ```
 

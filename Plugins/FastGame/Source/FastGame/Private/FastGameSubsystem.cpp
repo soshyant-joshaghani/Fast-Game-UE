@@ -597,16 +597,10 @@ void UFastGameSubsystem::ClearLocalCache()
 void UFastGameSubsystem::ClearEnteredIdentity()
 {
 	LastEnterRoute = EFastGameEnterRoute::Failed;
-	bForgotPassword = false;
 	if (Client.IsValid())
 	{
 		Client->Auth->ClearEnteredIdentity();
 	}
-}
-
-void UFastGameSubsystem::BeginForgot()
-{
-	bForgotPassword = true;
 }
 
 FString UFastGameSubsystem::GetEnteredIdentity() const
@@ -674,10 +668,6 @@ void UFastGameSubsystem::Enter(
 		if (UFastGameSubsystem* S = WeakThis.Get())
 		{
 			S->LastEnterRoute = InRoute;
-			if (InRoute != EFastGameEnterRoute::Failed)
-			{
-				S->bForgotPassword = false;
-			}
 		}
 		State->EnterRoute = InRoute;
 		State->EnterPin = FastGameSubsystemLatent::EnterRouteToPin(InRoute);
@@ -986,7 +976,8 @@ void UFastGameSubsystem::SendAuthCode(
 			});
 		return;
 	}
-	if (bForgotPassword)
+	// Enter Password screen → forgot-password recovery OTP (no Begin Forgot).
+	if (LastEnterRoute == EFastGameEnterRoute::Login)
 	{
 		Client->Auth->RequestPasswordRecovery(Identity,
 			[Finish](bool bOk, int32 Code, FString InMessage)
@@ -998,29 +989,49 @@ void UFastGameSubsystem::SendAuthCode(
 			});
 		return;
 	}
-	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Send Auth Code: use after Verify or Begin Forgot"));
-	Finish(false, 0, TEXT("Send Auth Code: use after Verify or Begin Forgot"));
+	const FString Hint = TEXT("Send Auth Code: use after Enter → Verify, or from Enter Password (forgot)");
+	FastGameSubsystemLatent::SetLastRequest(this, 0, Hint);
+	Finish(false, 0, Hint);
 }
 
 void UFastGameSubsystem::VerifyAuthCode(
 	const FString& Identity,
 	const FString& Code,
 	FLatentActionInfo LatentInfo,
-	EFastGameRequestOutcome& Outcome,
+	EFastGameVerifyAuthPin& Pin,
 	int32& StatusCode,
 	FString& Message)
 {
-	Outcome = EFastGameRequestOutcome::Failed;
-	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
+	Pin = EFastGameVerifyAuthPin::Failed;
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message);
 	if (!Setup.bRegistered)
 	{
 		return;
 	}
 
+	Setup.Action->VerifyAuthPinOut = &Pin;
+
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
-	auto Finish = [State](bool bOk, int32 Status, const FString& InMessage)
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	auto Finish = [WeakThis, State](bool bOk, int32 Status, const FString& InMessage)
 	{
-		FastGameSubsystemLatent::FinishStatus(State, bOk, Status, InMessage);
+		EFastGameVerifyAuthPin OutPin = EFastGameVerifyAuthPin::Failed;
+		if (bOk)
+		{
+			if (UFastGameSubsystem* S = WeakThis.Get())
+			{
+				if (S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
+				{
+					OutPin = EFastGameVerifyAuthPin::Signup;
+				}
+				else if (S->LastEnterRoute == EFastGameEnterRoute::Login)
+				{
+					OutPin = EFastGameVerifyAuthPin::AssignNewPassword;
+				}
+			}
+		}
+		State->VerifyAuthPin = OutPin;
+		FastGameSubsystemLatent::FinishStatus(State, bOk && OutPin != EFastGameVerifyAuthPin::Failed, Status, InMessage);
 	};
 
 	FString Err;
@@ -1043,7 +1054,7 @@ void UFastGameSubsystem::VerifyAuthCode(
 			});
 		return;
 	}
-	if (bForgotPassword)
+	if (LastEnterRoute == EFastGameEnterRoute::Login)
 	{
 		Client->Auth->VerifyPasswordRecovery(Identity, Code,
 			[Finish](bool bOk, int32 Status, FString InMessage)
@@ -1055,8 +1066,9 @@ void UFastGameSubsystem::VerifyAuthCode(
 			});
 		return;
 	}
-	FastGameSubsystemLatent::SetLastRequest(this, 0, TEXT("Verify Auth Code: use after Verify or Begin Forgot"));
-	Finish(false, 0, TEXT("Verify Auth Code: use after Verify or Begin Forgot"));
+	const FString Hint = TEXT("Verify Auth Code: use after Enter → Verify, or from Enter Password (forgot)");
+	FastGameSubsystemLatent::SetLastRequest(this, 0, Hint);
+	Finish(false, 0, Hint);
 }
 
 bool UFastGameSubsystem::IsEmailIdentity(const FString& Identity)
