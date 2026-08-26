@@ -365,6 +365,8 @@ FFastGameClient::FFastGameClient(FFastGameConfig InConfig)
 	, Auth(MakeShared<FFastGameAuth>(Http, Config))
 	, Catalog(MakeShared<FFastGameCatalog>(Http))
 	, Content(MakeShared<FFastGameContent>(Http, Catalog))
+	, Realtime(MakeShared<FFastGameRealtime>(Http))
+	, Progress(MakeShared<FFastGameProgress>(Http))
 	, Shop(MakeShared<FFastGameShop>(Http, Config))
 	, Ads(MakeShared<FFastGameAds>(Http))
 {
@@ -1316,6 +1318,200 @@ void FFastGameCatalog::GetGameServer(TFunction<void(bool, FString, FString)> OnD
 		if (Obj.IsValid()) Obj->TryGetStringField(TEXT("url"), Url);
 		if (OnDone) OnDone(true, Url, TEXT(""));
 	});
+}
+
+void FFastGameRealtime::MintSeat(const FString& GameCode, const FString& MapId, const FString& ModeId,
+	TFunction<void(bool, FFastGameSeatMint, FString)> OnDone)
+{
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("game_code"), GameCode);
+	Body->SetStringField(TEXT("map_id"), MapId);
+	if (!ModeId.IsEmpty())
+	{
+		Body->SetStringField(TEXT("mode_id"), ModeId);
+	}
+	Http->PostJson(TEXT("/apps/games/realtime/seat"), FastGameJsonUtil::Stringify(Body),
+		[OnDone](bool bOk, int32, FString RespBody, FString Err)
+		{
+			FFastGameSeatMint Seat;
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, Seat, Err);
+				return;
+			}
+			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(RespBody);
+			if (Obj.IsValid())
+			{
+				Obj->TryGetStringField(TEXT("seat_token"), Seat.SeatToken);
+				Obj->TryGetStringField(TEXT("expires_at"), Seat.ExpiresAt);
+				Obj->TryGetStringField(TEXT("game_server_url"), Seat.GameServerUrl);
+				Obj->TryGetStringField(TEXT("room_name"), Seat.RoomName);
+				Obj->TryGetStringField(TEXT("game_id"), Seat.GameId);
+				Obj->TryGetStringField(TEXT("map_id"), Seat.MapId);
+				Obj->TryGetStringField(TEXT("mode_id"), Seat.ModeId);
+			}
+			if (OnDone) OnDone(true, Seat, TEXT(""));
+		});
+}
+
+void FFastGameProgress::Get(const FString& GameCode, const FString& MapId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	FString Path = TEXT("/apps/games/progress/") + FastGameJsonUtil::Escape(GameCode);
+	if (!MapId.IsEmpty())
+	{
+		Path += TEXT("?map_id=") + FastGameJsonUtil::Escape(MapId);
+	}
+	Http->Get(Path,
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameProgress::Save(const FString& GameCode, const FString& EventType, const FString& MapId,
+	TSharedPtr<FJsonObject> Payload,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("event_type"), EventType);
+	Body->SetStringField(TEXT("map_id"), MapId);
+	Body->SetObjectField(TEXT("payload"), Payload.IsValid() ? Payload.ToSharedRef() : MakeShared<FJsonObject>());
+	Http->PostJson(
+		TEXT("/apps/games/progress/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/events"),
+		FastGameJsonUtil::Stringify(Body),
+		[OnDone](bool bOk, int32, FString RespBody, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(RespBody), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetBootstrap(const FString& GameCode,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/bootstrap"),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetGameConfig(const FString& GameCode,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/game"),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetMapConfig(const FString& GameCode, const FString& MapId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/maps/") +
+			FastGameJsonUtil::Escape(MapId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetCharacter(const FString& GameCode, const FString& CharacterId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/characters/") +
+			FastGameJsonUtil::Escape(CharacterId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetDialogue(const FString& GameCode, const FString& DialogueId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/dialogues/") +
+			FastGameJsonUtil::Escape(DialogueId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetQuiz(const FString& GameCode, const FString& QuizId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/quizzes/") +
+			FastGameJsonUtil::Escape(QuizId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetStrings(const FString& GameCode, const FString& Context, const FString& Lang,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	FString Path = TEXT("/apps/games/strings/") + FastGameJsonUtil::Escape(GameCode) +
+		TEXT("?context=") + FastGameJsonUtil::Escape(Context.IsEmpty() ? TEXT("HOME") : Context) +
+		TEXT("&lang=") + FastGameJsonUtil::Escape(Lang.IsEmpty() ? TEXT("en") : Lang);
+	Http->Get(Path,
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
 }
 
 void FFastGameContent::ListCharacters(const FString& GameId, TFunction<void(bool, TArray<FFastGameCharacter>, FString)> OnDone,

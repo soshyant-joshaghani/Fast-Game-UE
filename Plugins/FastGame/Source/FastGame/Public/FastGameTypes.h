@@ -181,6 +181,18 @@ struct FASTGAME_API FFastGamePreparedSession
 	FString ColyseusRoom;
 };
 
+/** POST /apps/games/realtime/seat — JoinMap ticket (prefer over GetGameServer). */
+struct FASTGAME_API FFastGameSeatMint
+{
+	FString SeatToken;
+	FString ExpiresAt;
+	FString GameServerUrl;
+	FString RoomName;
+	FString GameId;
+	FString MapId;
+	FString ModeId;
+};
+
 struct FASTGAME_API FFastGameAdvertisementRequest
 {
 	FString GameId;

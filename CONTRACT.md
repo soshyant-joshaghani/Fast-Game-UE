@@ -6,19 +6,20 @@ Official client surface for Unity and Unreal. Aligns with [fast-game/docs/studio
 
 | Layer | Role |
 |-------|------|
-| **Fast Game SDK** | Named FastAPI APIs: Auth, Catalog, Content, Shop, Assets, Ads |
-| **Colyseus SDK** (sibling package) | Multiplayer rooms — install separately; use catalog `colyseus_room` + `Catalog.GetGameServer` |
+| **Fast Game SDK** | Named FastAPI APIs: Auth, Catalog, Content, Realtime, Shop, Assets, Ads |
+| **Colyseus SDK** (sibling package) | Multiplayer rooms — install separately. Designers use **Realtime.JoinMap** only (mint seat + Colyseus join with seat token). Do **not** teach raw Colyseus join with designer-chosen `gameId`/`mapId`. |
 
-Fast Game does **not** wrap Colyseus join/send/leave. Studios call the Colyseus SDK directly.
+Fast Game does **not** wrap Colyseus join/send/leave. Studios mint a seat via Fast Game, then call the sibling Colyseus SDK with the seat token.
 
 ## Named modules (FastAPI only)
 
 | Module | Entry | Primary functions |
 |--------|-------|-------------------|
 | Auth | `client.Auth` | `Enter` (**stores** identity; no `game_code` pin) → UE Blueprint pins **Enter Password** / **Verify** / **Signup** / **Failed** (seeded `password_required` fires **Signup**; LastEnterRoute stays CompleteAccount). Internal routes: Login / CompleteAccount / VerifyId / Register via catalog `auth_requirements` for **client `GameCode`**. `Login` / `Register` (Signup; auto `/complete` when LastEnterRoute is CompleteAccount) / Recovery / Signup OTP with optional identity (empty → ENTER store); `Send Auth Code` (Verify → signup OTP, Enter Password → recovery OTP); `Verify Auth Code` pins **Signup** \| **Assign New Password** \| **Failed**; `Assign New Password` (recovery confirm); `UpdateFullName` (`PATCH /me`); UE latent auth nodes: **Success** \| **Failed** exec pins (no redundant `bSuccess`); Check Authentication: **Authenticated** \| **Not Authenticated** \| **Failed**. `ClearEnteredIdentity` / `GetEnteredIdentity` / `HasEnteredIdentity`; `GetMe`, `Logout`, `ClearLocalCache` (also clears ENTER store), `IsLoggedIn`, `AccessToken`, `CurrentUser`. Auth OTP/recovery inject backend `game_code` from client config (`Initialize Game` / `SetGameCode`), not method args. |
-| Catalog | `client.Catalog` | `ListGames` / `GetGame` (`lang`, `expandI18n`), `GetAuthRequirements` (public), `GetGameServer` |
-
-| Content | `client.Content` | `ListCharacters`, `GetMapRuntime`, `ResolveSpawn`, `PrepareSession` (same `lang` / `expandI18n`), loadout / claim helpers |
+| Catalog | `client.Catalog` | `ListGames` / `GetGame` (`lang`, `expandI18n`), `GetAuthRequirements` (public). `GetGameServer` is **legacy** for online join — prefer **Realtime.JoinMap** seat. |
+| Content | `client.Content` | **Tip (players):** `GetBootstrap`, `GetGameConfig`, `GetMapConfig`, `GetCharacter`, `GetDialogue`, `GetQuiz`, `GetStrings`. Legacy live dumps (**deprecated for players**): `ListCharacters`, `GetMapRuntime`, raw placement GETs. Still valid: `ResolveSpawn`, `PrepareSession` (same `lang` / `expandI18n`), loadout / claim helpers |
+| Realtime | `client.Realtime` | **JoinMap** (designer API): `MintSeat` / `JoinMap` → `POST …/realtime/seat` then sibling Colyseus join with `seat_token`. Prefer seat over public GetGameServer. Leave = Colyseus room leave (sibling). No Colyseus wrapper inside Fast Game. |
+| Progress | `client.Progress` | `Get` / `Save` → official `user_progress` events (no client score/win) |
 | Shop | `client.Shop` | `GetCatalog` (`lang`, `expandI18n`; empty `GameId` → Initialize Game `GameCode`), `ClaimFree`, `RedeemCode`, **Unlock Sku** / **Complete Unlock** (`POST …/shop/unlock/begin|complete`), **Shop Progress** / Unlock / Complete Unlock (exec pins: Purchase Successful / Pending / Failed / Cancelled / Store Missing), `GetShopSkuAccess` (UE pins: Owned / Available / Locked / Failed), Claim/Redeem/Catalog Success \| Failed. Empty shop `GameCode` / `Provider` → Initialize Game (same as Enter empty Identity). Unlock Sku has no Provider pin — always Initialize Game `StorePlatform`. |
 | Store | `FastGameStore` (internal OS) | Android Myket / Cafe Bazaar / Google Play. One flavor per APK, **inside** Unity `Plugins/Android/FastGameStore` and Unreal `Plugins/FastGameStore`. **Automatically follows** Initialize Game (install check + public key). Designers do **not** call FastGameStore — use Fast Game **Unlock Sku**. iOS StoreKit later (`unity/Plugins/iOS`, `unreal/Plugins/FastGameStore/iOS`). |
 | Assets | `client.Assets` | Pack `url` + `hash` helpers from catalog detail |
@@ -27,6 +28,8 @@ Fast Game does **not** wrap Colyseus join/send/leave. Studios call the Colyseus 
 ## HTTP paths (client)
 
 Base: `{ApiBaseUrl}` default `http://api.localhost/api/v1`
+
+**ApiBaseUrl rule (Unity + Unreal):** Document and sample the **full** base URL `http://api.localhost/api/v1` (scheme + host + `/api/v1`). Both SDKs accept host-only values like `api.localhost` and normalize them to that form. Prefer the full URL in Inspector / Blueprint / samples. Do not pass a URL whose path is non-empty and does not end with `/api/v1`.
 
 | Area | Method | Path |
 |------|--------|------|
@@ -48,11 +51,21 @@ Base: `{ApiBaseUrl}` default `http://api.localhost/api/v1`
 | Phone verify confirm | POST | `/base/login/phone/verification/confirm` (Bearer, JSON: `game_code`, `code`, `phone?`) |
 | Catalog | GET | `/apps/games/catalog/?available_only=` |
 | Catalog detail | GET | `/apps/games/catalog/{game_id}` |
-| Characters | GET | `/apps/games/content/{game}/characters?role=player\|npc` |
+| Tip bootstrap | GET | `/apps/games/tip/{game_code}/bootstrap` — SPLASH metadata: `game_id`, `tip_version`, `tip_sha256`, `encrypt_mode`, `supported_languages`, `default_language`, `scenes`, `published` |
+| Tip game config | GET | `/apps/games/tip/{game_code}/game` — player GetGameConfig: `{ game_id, version, sha256, published_at, payload }` (`payload.schema` = `fastgame.game/v1`); **404** if unpublished |
+| Tip map config | GET | `/apps/games/tip/{game_code}/maps/{map_id}` — player GetMapConfig: `{ game_id, map_id, version, sha256, published_at, payload }` (`payload.schema` = `fastgame.map/v1`); **404** if unpublished |
+| Tip character | GET | `/apps/games/tip/{game_code}/characters/{character_id}` — progressive GetCharacter (`fastgame.character/v1`) |
+| Tip dialogue | GET | `/apps/games/tip/{game_code}/dialogues/{dialogue_id}` — progressive GetDialogue (`fastgame.dialogue/v1`); **404** if unpublished |
+| Tip quiz | GET | `/apps/games/tip/{game_code}/quizzes/{quiz_id}` — progressive GetQuiz (`fastgame.quiz/v1`, **no answers**); **404** if unpublished |
+| Strings | GET | `/apps/games/strings/{game_code}?context=&lang=` — GetStrings context slice |
+| Progress | GET | `/apps/games/progress/{game_code}?map_id=` — official progress |
+| Progress event | POST | `/apps/games/progress/{game_code}/events` — validated events only (reject client score/win) |
+| Realtime seat | POST | `/apps/games/realtime/seat` — body `{ game_code, map_id, mode_id? }` → `seat_token`, `expires_at`, `game_server_url`, `room_name`, `game_id`, `map_id`, `mode_id` (JoinMap mint; prefer over GetGameServer) |
+| Characters | GET | `/apps/games/content/{game}/characters?role=player\|npc` — **deprecated for players** (prefer tip GetGameConfig) |
 | Cosmetics | GET | `/apps/games/content/{game}/characters/{character_id}/cosmetics` |
 | Abilities | GET | `/apps/games/content/{game}/characters/{character_id}/abilities` |
-| Map runtime | GET | `/apps/games/content/{game}/maps/{map_id}/runtime` |
-| Character placements | GET | `/apps/games/content/{game}/maps/{map_id}/character-placements` |
+| Map runtime | GET | `/apps/games/content/{game}/maps/{map_id}/runtime` — **deprecated for players** (prefer tip GetMapConfig) |
+| Character placements | GET | `/apps/games/content/{game}/maps/{map_id}/character-placements` — **deprecated for players** (prefer tip GetMapConfig) |
 | Event | GET | `/apps/games/content/{game}/events/{event_id}` |
 | Achievement | GET | `/apps/games/content/{game}/achievements/{achievement_id}` |
 | Avatar | GET | `/apps/games/content/{game}/avatars/{avatar_id}` |
@@ -82,18 +95,25 @@ Base: `{ApiBaseUrl}` default `http://api.localhost/api/v1`
 | Steam status | GET | `/base/steam/status` |
 | Steam OpenID login | GET | `/base/steam/login` |
 | Achievement Steam resync | POST | `/apps/games/content/{game}/achievements/steam/resync` |
-| Game server | GET | `/utils/game-server/` |
+| Game server | GET | `/utils/game-server/` — **legacy** public WS URL; prefer seat `game_server_url` from JoinMap |
 | Ads request | POST | `/apps/games/ads/request` (JSON: `game_id`, optional `slot` / `media_type` / `format` / `tags` / `locale` / `country` / `platform` / `engine` / `capabilities`) → provider-opaque ad or **204** no fill |
 | Ads events | POST | `/apps/games/ads/events` (JSON: `event_type`, optional `ad_id` / `game_id` / `campaign_id` / `timestamp` / `extras`) |
 
-## Colyseus sibling (not part of this SDK)
+## Realtime.JoinMap (designer API)
 
-Use values from FastAPI, then call Colyseus:
+Designers use **Realtime.JoinMap** only — do **not** teach raw Colyseus join with designer-chosen `gameId`/`mapId` as authority.
 
-- Room name: prefer **map** `colyseus_room` when the map enables online modes; fall back to catalog `colyseus_room` for legacy games
-- Endpoint: `GET /utils/game-server/` → `{ url }`
-- Join options: `{ gameId, modeId, mapId }`
-- Sandbox messages: `move` `{x,y,z}`, `score` `{delta}`, `finish` `{status}`; listen `match_outcome`
+1. Mint seat: `POST /apps/games/realtime/seat` body `{ game_code, map_id, mode_id? }` → `seat_token`, `expires_at`, `game_server_url`, `room_name`, …
+2. Sibling Colyseus: connect to `game_server_url`, then `joinOrCreate(room_name, { seat_token, … }, seat_token)`
+3. Leave: Colyseus room leave (sibling SDK)
+
+Prefer seat over public `Catalog.GetGameServer` / `GET /utils/game-server/` for online join. Fast Game ships a thin `MintSeat` / `JoinMap` HTTP helper; full Colyseus wrap is **not** required inside this plugin.
+
+### Legacy Colyseus notes (compat)
+
+- Room name fall back: map / catalog `colyseus_room`
+- Old join options `{ gameId, modeId, mapId }` without seat — demoted
+- Sandbox messages: `move` `{x,y,z}`, `score` `{delta}`, `finish` `{status}`; listen `match_outcome` (kernel rejects client-trusted score/finish when seats are on)
 
 ## DTO notes
 
@@ -134,7 +154,7 @@ Use values from FastAPI, then call Colyseus:
 - `ShopLine`: `game_code` / `sku_id` = storage **NAME**; `label` = locale-resolved display or null; `price` / nested prices; `owned`; `meta`
 - Shop access: `GET /apps/games/shop/access?game_code&sku_kind&sku_id&provider?` → `{ locked, owned, store_product_id? }`. `GET …/access/service` is DB ownership for game servers (email/phone + service key); optional `purchase_token`+`provider` validates with the store and persists owned. UE **Get Shop Sku Access** / Unity `GetShopSkuAccessAsync` query native inventory then **POST unlock/restore** so Fast Game `content_ownership` matches Myket/Bazaar/Play. ZarinPal/Steam: Fast Game ownership only.
 - Catalog/content/shop: `?lang=` (or `Accept-Language`) resolves display `label`; `?expand_i18n=true` returns full `translations` (default omitted). Clients never send labels on buy/claim/access.
-- **SDK / Blueprint**: pass `Lang` (e.g. `fa`) on **List Games**, **Get Game**, **Get Shop Catalog**, **List Characters**, **Get Map Runtime**, **Resolve Spawn**, **Prepare Session**. Optional **Expand I18n** for the full translations map. Empty `Lang` = server default.
+- **SDK / Blueprint**: pass `Lang` (e.g. `fa`) on **List Games**, **Get Game**, **Get Shop Catalog**, **List Characters**, **Get Map Runtime**, **Resolve Spawn**, **Prepare Session**. Optional **Expand I18n** for the full translations map. Empty `Lang` = server default. Player content for SPLASH / DOWNLOAD / LEVEL should use tip **Get Bootstrap** / **Get Game Config** / **Get Map Config** (no `lang` query — tip is already published lean). **List Characters** / **Get Map Runtime** remain for editors/legacy and are **deprecated for players**.
 
 ## Entity locales
 

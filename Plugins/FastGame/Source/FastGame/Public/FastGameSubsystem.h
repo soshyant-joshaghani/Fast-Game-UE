@@ -327,8 +327,40 @@ public:
 		FString& Message,
 		FString& Url);
 
-	// --- Content ---
+	// --- Content (tip façade preferred for players) ---
 
+	/** SPLASH GetBootstrap — published tip metadata. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Get Bootstrap"))
+	void GetBootstrap(
+		const FString& GameCode,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	/** Player GetGameConfig — tip payload (404 if unpublished). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Get Game Config"))
+	void GetGameConfig(
+		const FString& GameCode,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	/** Player GetMapConfig — tip map payload (404 if unpublished). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Get Map Config"))
+	void GetMapConfig(
+		const FString& GameCode,
+		const FString& MapId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	/** @deprecated Prefer Get Bootstrap / Get Game Config for players. */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
 	void ListCharacters(
 		const FString& GameId,
@@ -354,6 +386,7 @@ public:
 		FString& Message,
 		FFastGameBPPreparedSession& Session);
 
+	/** @deprecated Prefer Get Map Config for players. */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", AdvancedDisplay = "Lang,bExpandI18n", CPP_Default_Lang = "", CPP_Default_bExpandI18n = "false"))
 	void GetMapRuntime(
 		const FString& GameId,
@@ -814,6 +847,15 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Catalog")
 	FOnFastGameGetGameServer OnGetGameServerComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnGetBootstrapComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnGetGameConfigComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameJsonResult OnGetMapConfigComplete;
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
 	FOnFastGameListCharacters OnListCharactersComplete;

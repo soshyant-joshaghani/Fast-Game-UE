@@ -163,8 +163,55 @@ public:
 	/** Public auth gates for new-user OTP (no login required). */
 	void GetAuthRequirements(const FString& GameId,
 		TFunction<void(bool /*bOk*/, bool /*bVerifyPhone*/, bool /*bVerifyEmail*/, FString /*Err*/)> OnDone);
-	/** FastAPI helper: WS URL for the sibling Colyseus SDK. */
+	/**
+	 * Legacy public WS URL. Prefer Realtime.JoinMap / seat game_server_url for online join.
+	 * FastAPI helper only — designers should not use this as the primary online join path.
+	 */
 	void GetGameServer(TFunction<void(bool, FString /*Url*/, FString)> OnDone);
+
+private:
+	TSharedRef<FFastGameHttp> Http;
+};
+
+/**
+ * Designer Realtime.JoinMap — mint seat, then sibling Colyseus join with seat_token.
+ * Fast Game does not wrap Colyseus join/send/leave.
+ */
+class FASTGAME_API FFastGameRealtime
+{
+public:
+	explicit FFastGameRealtime(TSharedRef<FFastGameHttp> InHttp) : Http(InHttp) {}
+
+	/** POST /apps/games/realtime/seat — short-lived one-time JoinMap ticket. */
+	void MintSeat(const FString& GameCode, const FString& MapId, const FString& ModeId,
+		TFunction<void(bool, FFastGameSeatMint, FString)> OnDone);
+
+	/**
+	 * Designer JoinMap step 1: mint seat. Then join sibling Colyseus with SeatToken /
+	 * RoomName / GameServerUrl. Do not pass designer-chosen gameId/mapId as authority.
+	 */
+	void JoinMap(const FString& GameCode, const FString& MapId, const FString& ModeId,
+		TFunction<void(bool, FFastGameSeatMint, FString)> OnDone)
+	{
+		MintSeat(GameCode, MapId, ModeId, MoveTemp(OnDone));
+	}
+
+private:
+	TSharedRef<FFastGameHttp> Http;
+};
+
+/** Official Progress.Get / Progress.Save (A5 / B5). */
+class FASTGAME_API FFastGameProgress
+{
+public:
+	explicit FFastGameProgress(TSharedRef<FFastGameHttp> InHttp) : Http(InHttp) {}
+
+	void Get(const FString& GameCode, const FString& MapId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Validated event only — never send client score/win/finished. */
+	void Save(const FString& GameCode, const FString& EventType, const FString& MapId,
+		TSharedPtr<FJsonObject> Payload,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 
 private:
 	TSharedRef<FFastGameHttp> Http;
@@ -176,13 +223,36 @@ public:
 	FFastGameContent(TSharedRef<FFastGameHttp> InHttp, TSharedRef<FFastGameCatalog> InCatalog)
 		: Http(InHttp), Catalog(InCatalog) {}
 
+	/** Player tip façade (published tip only; 404 if unpublished). Prefer over ListCharacters / GetMapRuntime. */
+	void GetBootstrap(const FString& GameCode,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	void GetGameConfig(const FString& GameCode,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	void GetMapConfig(const FString& GameCode, const FString& MapId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Progressive GetCharacter (A3). */
+	void GetCharacter(const FString& GameCode, const FString& CharacterId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Progressive GetDialogue — 404 until panel craft (A8). */
+	void GetDialogue(const FString& GameCode, const FString& DialogueId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Progressive GetQuiz — 404 until panel craft (A8). */
+	void GetQuiz(const FString& GameCode, const FString& QuizId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** GetStrings(context, lang) — one locale context slice (A4). */
+	void GetStrings(const FString& GameCode, const FString& Context, const FString& Lang,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+
+	/** @deprecated Prefer GetBootstrap / GetGameConfig for player clients. */
 	void ListCharacters(const FString& GameId, TFunction<void(bool, TArray<FFastGameCharacter>, FString)> OnDone,
 		const FString& Lang = TEXT(""), bool bExpandI18n = false);
+	/** @deprecated Prefer GetBootstrap / GetGameConfig for player clients. */
 	void ListCharacters(const FString& GameId, const FString& Role,
 		TFunction<void(bool, TArray<FFastGameCharacter>, FString)> OnDone,
 		const FString& Lang = TEXT(""), bool bExpandI18n = false);
 	void ClaimEvent(const FString& GameId, const FString& EventId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** @deprecated Prefer GetMapConfig for player clients. */
 	void GetMapRuntime(const FString& GameId, const FString& MapId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone,
 		const FString& Lang = TEXT(""), bool bExpandI18n = false);
@@ -298,7 +368,7 @@ private:
 	TSharedRef<FFastGameHttp> Http;
 };
 
-/** FastAPI-named client only. Multiplayer uses sibling colyseus-unreal (or official Colyseus). */
+/** FastAPI-named client only. Online: Realtime.JoinMap (seat) + sibling Colyseus. */
 class FASTGAME_API FFastGameClient : public TSharedFromThis<FFastGameClient>
 {
 public:
@@ -309,6 +379,8 @@ public:
 	TSharedRef<FFastGameAuth> Auth;
 	TSharedRef<FFastGameCatalog> Catalog;
 	TSharedRef<FFastGameContent> Content;
+	TSharedRef<FFastGameRealtime> Realtime;
+	TSharedRef<FFastGameProgress> Progress;
 	TSharedRef<FFastGameShop> Shop;
 	TSharedRef<FFastGameAds> Ads;
 };

@@ -1572,6 +1572,181 @@ void UFastGameSubsystem::GetGameServer(
 	});
 }
 
+void UFastGameSubsystem::GetBootstrap(
+	const FString& GameCode,
+	FLatentActionInfo LatentInfo,
+	bool& bSuccess,
+	int32& StatusCode,
+	FString& Message,
+	FString& JsonBody)
+{
+	JsonBody.Reset();
+
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
+	if (!Setup.bRegistered)
+	{
+		if (!Message.IsEmpty())
+		{
+			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
+			OnGetBootstrapComplete.Broadcast(false, TEXT(""), Message);
+		}
+		return;
+	}
+
+	Setup.Action->JsonBodyOut = &JsonBody;
+
+	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
+	FString Err;
+	if (!EnsureClient(Err))
+	{
+		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
+		OnGetBootstrapComplete.Broadcast(false, TEXT(""), Err);
+		FastGameSubsystemLatent::FinishErr(State, false, Err);
+		return;
+	}
+
+	const int32 Gen = ClientGeneration;
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	Client->Content->GetBootstrap(GameCode,
+		[WeakThis, Gen, State](bool bOk, TSharedPtr<FJsonObject> Json, FString Error)
+		{
+			FString Body = FastGameBlueprintConvert::JsonObjectToString(Json);
+			int32 Code = 0;
+			FString Msg;
+			FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Body, Error, Code, Msg, State]()
+			{
+				if (UFastGameSubsystem* S = WeakThis.Get())
+				{
+					if (S->ClientGeneration == Gen)
+					{
+						FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
+						S->OnGetBootstrapComplete.Broadcast(bOk, Body, Error);
+					}
+				}
+				State->JsonBody = Body;
+				FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
+			});
+		});
+}
+
+void UFastGameSubsystem::GetGameConfig(
+	const FString& GameCode,
+	FLatentActionInfo LatentInfo,
+	bool& bSuccess,
+	int32& StatusCode,
+	FString& Message,
+	FString& JsonBody)
+{
+	JsonBody.Reset();
+
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
+	if (!Setup.bRegistered)
+	{
+		if (!Message.IsEmpty())
+		{
+			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
+			OnGetGameConfigComplete.Broadcast(false, TEXT(""), Message);
+		}
+		return;
+	}
+
+	Setup.Action->JsonBodyOut = &JsonBody;
+
+	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
+	FString Err;
+	if (!EnsureClient(Err))
+	{
+		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
+		OnGetGameConfigComplete.Broadcast(false, TEXT(""), Err);
+		FastGameSubsystemLatent::FinishErr(State, false, Err);
+		return;
+	}
+
+	const int32 Gen = ClientGeneration;
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	Client->Content->GetGameConfig(GameCode,
+		[WeakThis, Gen, State](bool bOk, TSharedPtr<FJsonObject> Json, FString Error)
+		{
+			FString Body = FastGameBlueprintConvert::JsonObjectToString(Json);
+			int32 Code = 0;
+			FString Msg;
+			FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Body, Error, Code, Msg, State]()
+			{
+				if (UFastGameSubsystem* S = WeakThis.Get())
+				{
+					if (S->ClientGeneration == Gen)
+					{
+						FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
+						S->OnGetGameConfigComplete.Broadcast(bOk, Body, Error);
+					}
+				}
+				State->JsonBody = Body;
+				FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
+			});
+		});
+}
+
+void UFastGameSubsystem::GetMapConfig(
+	const FString& GameCode,
+	const FString& MapId,
+	FLatentActionInfo LatentInfo,
+	bool& bSuccess,
+	int32& StatusCode,
+	FString& Message,
+	FString& JsonBody)
+{
+	JsonBody.Reset();
+
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::RegisterWithSuccess(this, LatentInfo, bSuccess, StatusCode, Message);
+	if (!Setup.bRegistered)
+	{
+		if (!Message.IsEmpty())
+		{
+			FastGameSubsystemLatent::SetLastRequest(this, 0, Message);
+			OnGetMapConfigComplete.Broadcast(false, TEXT(""), Message);
+		}
+		return;
+	}
+
+	Setup.Action->JsonBodyOut = &JsonBody;
+
+	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
+	FString Err;
+	if (!EnsureClient(Err))
+	{
+		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
+		OnGetMapConfigComplete.Broadcast(false, TEXT(""), Err);
+		FastGameSubsystemLatent::FinishErr(State, false, Err);
+		return;
+	}
+
+	const int32 Gen = ClientGeneration;
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	Client->Content->GetMapConfig(GameCode, MapId,
+		[WeakThis, Gen, State](bool bOk, TSharedPtr<FJsonObject> Json, FString Error)
+		{
+			FString Body = FastGameBlueprintConvert::JsonObjectToString(Json);
+			int32 Code = 0;
+			FString Msg;
+			FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Body, Error, Code, Msg, State]()
+			{
+				if (UFastGameSubsystem* S = WeakThis.Get())
+				{
+					if (S->ClientGeneration == Gen)
+					{
+						FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
+						S->OnGetMapConfigComplete.Broadcast(bOk, Body, Error);
+					}
+				}
+				State->JsonBody = Body;
+				FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
+			});
+		});
+}
+
 void UFastGameSubsystem::ListCharacters(
 	const FString& GameId,
 	const FString& Role,

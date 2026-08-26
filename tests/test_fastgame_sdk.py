@@ -195,6 +195,72 @@ def test_ue_native_store_registry_no_hard_depend():
     assert "IsAndroidStoreProvider" in native
 
 
+def test_ue_tip_facade_content_methods():
+    header = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    sub_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    contract = _read(ROOT / "CONTRACT.md")
+    assert "void GetBootstrap" in header
+    assert "void GetGameConfig" in header
+    assert "void GetMapConfig" in header
+    assert "void GetCharacter" in header
+    assert "void GetDialogue" in header
+    assert "void GetQuiz" in header
+    assert "void GetStrings" in header
+    assert "void FFastGameContent::GetBootstrap" in cpp
+    assert "void FFastGameContent::GetGameConfig" in cpp
+    assert "void FFastGameContent::GetMapConfig" in cpp
+    assert "void FFastGameContent::GetCharacter" in cpp
+    assert "void FFastGameContent::GetDialogue" in cpp
+    assert "void FFastGameContent::GetQuiz" in cpp
+    assert "void FFastGameContent::GetStrings" in cpp
+    assert "/apps/games/tip/" in cpp
+    assert "/apps/games/strings/" in cpp
+    assert "/bootstrap" in cpp
+    assert 'TEXT("/game")' in cpp or "/game" in cpp
+    assert "/maps/" in cpp
+    assert "void UFastGameSubsystem::GetBootstrap" in _read(
+        UE / "Source/FastGame/Private/FastGameSubsystem.cpp"
+    )
+    assert 'DisplayName = "Get Bootstrap"' in sub_h
+    assert 'DisplayName = "Get Game Config"' in sub_h
+    assert 'DisplayName = "Get Map Config"' in sub_h
+    assert "GetBootstrap" in contract
+    assert "GetGameConfig" in contract
+    assert "GetMapConfig" in contract
+    assert "deprecated for players" in contract.lower()
+
+
+def test_ue_realtime_joinmap_seat():
+    header = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    types = _read(UE / "Source/FastGame/Public/FastGameTypes.h")
+    contract = _read(ROOT / "CONTRACT.md")
+    assert "class FASTGAME_API FFastGameRealtime" in header
+    assert "void MintSeat" in header
+    assert "void JoinMap" in header
+    assert "void FFastGameRealtime::MintSeat" in cpp
+    assert "/apps/games/realtime/seat" in cpp
+    assert "struct FASTGAME_API FFastGameSeatMint" in types
+    assert "TSharedRef<FFastGameRealtime> Realtime" in header
+    assert "Realtime.JoinMap" in contract
+    assert "/apps/games/realtime/seat" in contract
+    assert "designer-chosen" in contract.lower() or "designer-chosen" in contract
+
+
+def test_ue_progress_get_save():
+    header = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    contract = _read(ROOT / "CONTRACT.md")
+    assert "class FASTGAME_API FFastGameProgress" in header
+    assert "void FFastGameProgress::Get" in cpp
+    assert "void FFastGameProgress::Save" in cpp
+    assert "/apps/games/progress/" in cpp
+    assert "TSharedRef<FFastGameProgress> Progress" in header
+    assert "client.Progress" in contract
+    assert "/apps/games/progress/" in contract
+
+
 def test_ue_modules_present():
     for rel in (
         "Source/FastGame/Public/FastGameClient.h",

@@ -16,11 +16,12 @@ For plugin API usage see [SDK.md](../SDK.md). For HTTP contracts see [CONTRACT.m
 | **Exists** | [`Samples/`](../Samples/) — API-only + Colyseus join sketches |
 | **Exists** | [`tests/`](../tests/) + [`run_tests.py`](../run_tests.py) — SDK contract checks |
 | **Exists** | Thin game module [`Source/FastGameUE/`](../Source/FastGameUE/) |
-| **Not yet** | `Content/` game assets, maps, gameplay Blueprints |
+| **Exists** | Scene shells under [`Content/`](../Content/) — SPLASH → LANGUAGE → AUTH → DOWNLOAD → MENU → LEVEL (see below) |
+| **Not yet** | Full gameplay / environment art beyond shells |
 | **Not yet** | Platform profile system, asset registry, CLI build wrapper |
 | **Not yet** | Android/Windows packaging scripts in-repo |
 
-This is an **SDK development shell** that can grow into a full Android + PC game **in the same project**. It is not a blank game and not a finished game.
+This is an **SDK development shell** with **Content map/BP/widget shells** that can grow into a full Android + PC game **in the same project**. It is not a blank game and not a finished game.
 
 ---
 
@@ -85,35 +86,67 @@ The old `ue project configs.txt` draft described a **mobile-first, single-projec
 ```text
 fast-game-ue/                          Today          When game lands
 ├── FastGameUE.uproject              ✓              ✓
-├── Config/                            minimal        platform DeviceProfiles, input, packaging
+├── Config/                            default map → MAP_0_SPLASH; packaging later
 ├── Source/FastGameUE/                 shell module   + PlatformService, game systems
 ├── Plugins/
 │   ├── FastGame/                      ✓              ✓ (upstream SDK)
 │   └── FastGameStore/                 ✓              ✓ (one flavor per store APK)
 ├── Samples/                           ✓              keep as reference
 ├── tests/                             ✓              ✓ (+ optional game validation)
-├── Content/                           —              see below
+├── Content/                           shells ✓       + Core/Environment/Platform art
 ├── Scripts/                           —              RunUAT wrappers, CI entrypoints
 └── docs/PROJECT.md                    ✓              this file
 ```
 
-Suggested **Content/** layout when you start (aligned with the evaluated spec, plus Fast Game UI):
+### Content shells on disk (scene flow)
+
+Default map in `Config/DefaultEngine.ini`: `/Game/MAPS/MAP_0_SPLASH`.
 
 ```text
 Content/
-├── Core/
-│   ├── Gameplay/
-│   ├── Characters/
-│   ├── Systems/
-│   ├── UI/              # wire to Fast Game Auth/Shop widgets or custom + subsystem
-│   ├── Input/           # Enhanced Input actions + IMC_PC / IMC_Mobile
-│   └── Audio/
+├── MAPS/
+│   ├── MAP_0_SPLASH.umap
+│   ├── MAP_1_LANGUAGE.umap
+│   ├── MAP_2_AUTH.umap
+│   ├── MAP_3_DOWNLOAD.umap
+│   ├── MAP_4_Menu.umap
+│   └── LEVELS/
+│       └── MAP_LEVEL_SAMPLE.umap      # LEVEL content map (not MAP_5_*)
+├── BLUEPRINTS/
+│   ├── BP_0_SPLASH.uasset
+│   ├── BP_1_LANGUAGE.uasset
+│   ├── BP_2_AUTH.uasset
+│   ├── BP_3_DOWNLOAD.uasset
+│   ├── BP_4_MENU.uasset
+│   ├── BP_5_LEVEL.uasset
+│   └── AUTH_BP.uasset
+├── ART/UI/WIDGETS/
+│   ├── WDGT_SPLASH.uasset
+│   ├── WDGT_LANGUAGE.uasset
+│   ├── WDGT_AUTH.uasset
+│   ├── WDGT_AUTH_ENTER_ID.uasset
+│   ├── WDGT_AUTH_ENTER_PASSWORD.uasset
+│   ├── WDGT_AUTH_VERIFY.uasset
+│   ├── WDGT_AUTH_REGISTER.uasset
+│   ├── WDGT_AUTH_NEW_PASSWORD.uasset
+│   ├── WDGT_DOWNLOAD.uasset
+│   └── WDGT_MENU.uasset
+└── _CORE/
+    └── BUILD_SETTINGS.uasset
+```
+
+Flow NAMEs: **SPLASH → LANGUAGE → AUTH → DOWNLOAD → MENU → LEVEL**. Widgets cover SPLASH…MENU (+ AUTH subpages); LEVEL uses `BP_5_LEVEL` + `MAPS/LEVELS/MAP_LEVEL_SAMPLE`.
+
+Suggested extra layout when gameplay art grows (aligned with the evaluated spec):
+
+```text
+Content/
+├── Core/          # Gameplay, Characters, Systems, UI, Input, Audio
 ├── Environment/
-├── Platform/            # optional Mobile/ PC mesh & material variants
-├── Maps/
-├── Data/                # DataAssets / tables for logical asset IDs
+├── Platform/      # optional Mobile/ PC mesh & material variants
+├── Data/          # DataAssets / tables for logical asset IDs
 ├── VFX/
-└── Developer/           # dev-only maps & tests
+└── Developer/     # already present (Developers/)
 ```
 
 Naming (when variants exist): `SM_Tree_01_Mobile`, `SM_Tree_01_PC`; logical id `Tree_01` in a DataAsset.
@@ -162,8 +195,8 @@ Not implemented yet; Milestone 0 below.
 - [x] UE 5.6 project opens; **FastGame** + **FastGameStore** compile
 - [x] SDK samples + `run_tests.py`
 - [x] Backend contract documented
-- [ ] `Content/` game module structure
-- [ ] First custom map (replace engine template default in `Config/DefaultEngine.ini`)
+- [x] `Content/` scene shells: MAP_0…MAP_4 + LEVEL sample, BP_0…BP_5, WDGT_* 
+- [ ] First custom gameplay map beyond shells (replace default only if shipping a title map)
 - [ ] Android Development package from CLI
 - [ ] Windows Development package from CLI
 - [ ] Documented target Android device(s)

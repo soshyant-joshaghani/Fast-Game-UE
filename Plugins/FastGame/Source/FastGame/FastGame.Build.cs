@@ -21,7 +21,7 @@ public class FastGame : ModuleRules
 			"Projects"
 		});
 
-		// Multiplayer: add sibling plugin charisma-ai/colyseus-unreal and call it from game code
-		// using Catalog.GetGameServer + PrepareSession.ColyseusRoom (see Samples/SandboxMultiplayer).
+		// Multiplayer: Realtime.JoinMap (seat mint) + sibling Colyseus with seat_token.
+		// Do not wrap Colyseus inside FastGame (see CONTRACT Realtime.JoinMap).
 	}
 }
