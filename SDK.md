@@ -149,7 +149,7 @@ Empty shop **GameCode** / **Provider** pins use **Initialize Game** (same patter
 
 ## Multiplayer (sibling Colyseus)
 
-1. Add [colyseus-unreal](https://github.com/charisma-ai/colyseus-unreal) as a **sibling** plugin (pin a commit SHA).
+1. Add [colyseus-unreal](https://github.com/soshyant-joshaghani/colyseus-unreal) as a **sibling** plugin (`Scripts/fetch-colyseus.bat`; pin a commit SHA in `colyseus.lock.json`).
 2. Fast Game: `PrepareSession` + `Catalog->GetGameServer` (or Blueprint **Get Game Server**).
 3. Colyseus: `Client::JoinOrCreate(session.ColyseusRoom, { gameId, modeId, mapId })` — see `Samples/SandboxMultiplayer`.
 

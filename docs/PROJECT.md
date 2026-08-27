@@ -34,7 +34,7 @@ The temp platform spec assumed a greenfield game. This project already has backe
 | Auth, catalog, content, shop, ads | **`FastGame`** plugin → [`SDK.md`](../SDK.md) |
 | Android store IAP | **`FastGameStore`** plugin — one store flavor **per APK**; designers call **Unlock Sku** only |
 | Backend | [`fast-game`](../fast-game/Readme.md) dev stack (`http://api.localhost/api/v1`) |
-| Multiplayer rooms | **Sibling** [colyseus-unreal](https://github.com/charisma-ai/colyseus-unreal) — `Scripts/fetch-colyseus.bat` → `Plugins/colyseus-unreal/` |
+| Multiplayer rooms | **Sibling** [colyseus-unreal](https://github.com/soshyant-joshaghani/colyseus-unreal) (our fork) — `Scripts/fetch-colyseus.bat` → `Plugins/colyseus-unreal/` |
 | API contract | [`CONTRACT.md`](../CONTRACT.md) |
 
 **Initialize Game** (once): `GameCode` + `StorePlatform` (install check on device).  

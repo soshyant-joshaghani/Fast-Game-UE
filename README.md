@@ -38,8 +38,8 @@ Scripts\fetch-colyseus.bat -Update
 
 | Item | Detail |
 |------|--------|
-| Upstream | [charisma-ai/colyseus-unreal](https://github.com/charisma-ai/colyseus-unreal) |
+| Sibling (ours) | [soshyant-joshaghani/colyseus-unreal](https://github.com/soshyant-joshaghani/colyseus-unreal) — fork of [charisma-ai-colyseus-ue](https://github.com/charisma-ai/colyseus-unreal) |
 | Installed to | `Plugins/colyseus-unreal/` (gitignored) |
-| Pin / update | `Scripts/colyseus.lock.json` · `-Update` pulls latest on locked branch |
+| Pin / update | `Scripts/colyseus.lock.json` pins a commit SHA · `-Update` pulls fork `main` and prints the SHA to pin |
 
 After fetch: enable plugin **Colyseus** in Edit → Plugins. See `Samples/SandboxMultiplayer/`.
