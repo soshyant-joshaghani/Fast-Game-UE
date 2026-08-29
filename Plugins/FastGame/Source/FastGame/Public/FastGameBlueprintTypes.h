@@ -111,6 +111,22 @@ struct FASTGAME_API FFastGameBPAssetPack
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	FString Hash;
+
+	/** mobile | pc | * — DOWNLOAD filter (A4). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FString> Quality;
+
+	/** android | ios | windows | mac | web | * */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FString> Platforms;
+
+	/** BCP-47 tags or * — matched to preferred_language. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FString> Languages;
+
+	/** content | locale | splash | upscale */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString Kind = TEXT("content");
 };
 
 USTRUCT(BlueprintType)
@@ -497,6 +513,16 @@ enum class EFastGameAuthCheck : uint8
 	Failed UMETA(DisplayName = "Failed"),
 };
 
+/** Unified auth success — login, signup, or password recovery (wire scene flow). */
+UENUM(BlueprintType)
+enum class EFastGameAuthCompleteReason : uint8
+{
+	Login UMETA(DisplayName = "Login"),
+	Signup UMETA(DisplayName = "Signup"),
+	PasswordRecovery UMETA(DisplayName = "Password Recovery"),
+	AlreadyAuthenticated UMETA(DisplayName = "Already Authenticated"),
+};
+
 /** Get Shop Sku Access exec pins. */
 UENUM(BlueprintType)
 enum class EFastGameShopAccessRoute : uint8
@@ -521,6 +547,7 @@ enum class EFastGameShopProgress : uint8
 // --- Dynamic multicast delegates (async Blueprint events) ---
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameLoginComplete, bool, bSuccess, int32, StatusCode, const FString&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFastGameAuthComplete, EFastGameAuthCompleteReason, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(FOnFastGameSignupComplete, bool, bSuccess, int32, StatusCode, const FString&, UserId, const FString&, Email, const FString&, Phone, const FString&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnFastGameGetMeComplete, bool, bSuccess, int32, StatusCode, const FFastGameBPUser&, User, const FString&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnFastGameSimpleComplete, bool, bSuccess, const FString&, Error);

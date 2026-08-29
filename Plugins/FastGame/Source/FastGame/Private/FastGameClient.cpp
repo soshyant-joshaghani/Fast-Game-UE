@@ -48,6 +48,50 @@ namespace FastGameJsonUtil
 		return FGenericPlatformHttp::UrlEncode(S);
 	}
 
+	static void ParseStringArray(const TSharedPtr<FJsonObject>& O, const FString& Key, TArray<FString>& Out)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+		if (!O.IsValid() || !O->TryGetArrayField(Key, Arr) || !Arr)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& V : *Arr)
+		{
+			const FString S = V->AsString().TrimStartAndEnd();
+			if (!S.IsEmpty())
+			{
+				Out.Add(S);
+			}
+		}
+	}
+
+	static FFastGameAssetPack ParseAssetPack(const TSharedPtr<FJsonObject>& P)
+	{
+		FFastGameAssetPack Pack;
+		if (!P.IsValid())
+		{
+			return Pack;
+		}
+		P->TryGetStringField(TEXT("id"), Pack.Id);
+		P->TryGetStringField(TEXT("pack_id"), Pack.PackId);
+		P->TryGetStringField(TEXT("label"), Pack.Label);
+		double Rev = 0;
+		P->TryGetNumberField(TEXT("revision"), Rev);
+		Pack.Revision = static_cast<int32>(Rev);
+		P->TryGetStringField(TEXT("version"), Pack.Version);
+		P->TryGetStringField(TEXT("url"), Pack.Url);
+		P->TryGetStringField(TEXT("hash"), Pack.Hash);
+		ParseStringArray(P, TEXT("quality"), Pack.Quality);
+		ParseStringArray(P, TEXT("platforms"), Pack.Platforms);
+		ParseStringArray(P, TEXT("languages"), Pack.Languages);
+		P->TryGetStringField(TEXT("kind"), Pack.Kind);
+		if (Pack.Kind.IsEmpty())
+		{
+			Pack.Kind = TEXT("content");
+		}
+		return Pack;
+	}
+
 	static FFastGameCatalogEntry ParseCatalog(const TSharedPtr<FJsonObject>& O)
 	{
 		FFastGameCatalogEntry E;
@@ -136,19 +180,7 @@ namespace FastGameJsonUtil
 		{
 			for (const auto& V : *Packs)
 			{
-				const TSharedPtr<FJsonObject> P = V->AsObject();
-				if (!P.IsValid()) continue;
-				FFastGameAssetPack Pack;
-				P->TryGetStringField(TEXT("id"), Pack.Id);
-				P->TryGetStringField(TEXT("pack_id"), Pack.PackId);
-				P->TryGetStringField(TEXT("label"), Pack.Label);
-				double Rev = 0;
-				P->TryGetNumberField(TEXT("revision"), Rev);
-				Pack.Revision = static_cast<int32>(Rev);
-				P->TryGetStringField(TEXT("version"), Pack.Version);
-				P->TryGetStringField(TEXT("url"), Pack.Url);
-				P->TryGetStringField(TEXT("hash"), Pack.Hash);
-				D.AssetPacks.Add(Pack);
+				D.AssetPacks.Add(ParseAssetPack(V->AsObject()));
 			}
 		}
 		return D;
@@ -1428,6 +1460,23 @@ void FFastGameContent::GetGameConfig(const FString& GameCode,
 		});
 }
 
+void FFastGameContent::GetPackTip(const FString& GameCode, const FString& PackId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/asset-packs/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/packs/")
+			+ FastGameJsonUtil::Escape(PackId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
 void FFastGameContent::GetMapConfig(const FString& GameCode, const FString& MapId,
 	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
 {
@@ -2476,6 +2525,34 @@ void FFastGameShop::ClearPendingPayment()
 TArray<FFastGameAssetPack> FFastGameAssets::ListPacksFromGame(const FFastGameCatalogDetail& Detail)
 {
 	return Detail.AssetPacks;
+}
+
+FFastGameAssetPack FFastGameAssets::ParsePack(const TSharedPtr<FJsonObject>& PackObject)
+{
+	return FastGameJsonUtil::ParseAssetPack(PackObject);
+}
+
+TArray<FFastGameAssetPack> FFastGameAssets::ListPacksFromGameTip(const TSharedPtr<FJsonObject>& GameTip)
+{
+	TArray<FFastGameAssetPack> Out;
+	if (!GameTip.IsValid())
+	{
+		return Out;
+	}
+	const TSharedPtr<FJsonObject>* PayloadPtr = nullptr;
+	const TSharedPtr<FJsonObject> Source = GameTip->TryGetObjectField(TEXT("payload"), PayloadPtr) && PayloadPtr && PayloadPtr->IsValid()
+		? *PayloadPtr
+		: GameTip;
+	const TArray<TSharedPtr<FJsonValue>>* Packs = nullptr;
+	if (!Source->TryGetArrayField(TEXT("asset_packs"), Packs) || !Packs)
+	{
+		return Out;
+	}
+	for (const TSharedPtr<FJsonValue>& V : *Packs)
+	{
+		Out.Add(FastGameJsonUtil::ParseAssetPack(V->AsObject()));
+	}
+	return Out;
 }
 
 static FFastGameAdvertisement ParseAdvertisement(const TSharedPtr<FJsonObject>& O)

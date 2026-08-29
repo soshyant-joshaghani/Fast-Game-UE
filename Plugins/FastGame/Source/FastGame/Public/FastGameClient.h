@@ -228,6 +228,9 @@ public:
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 	void GetGameConfig(const FString& GameCode,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Pack tip with ready parts — used when game tip index has no top-level url. */
+	void GetPackTip(const FString& GameCode, const FString& PackId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 	void GetMapConfig(const FString& GameCode, const FString& MapId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 	/** Progressive GetCharacter (A3). */
@@ -347,6 +350,8 @@ class FASTGAME_API FFastGameAssets
 {
 public:
 	static TArray<FFastGameAssetPack> ListPacksFromGame(const FFastGameCatalogDetail& Detail);
+	static FFastGameAssetPack ParsePack(const TSharedPtr<FJsonObject>& PackObject);
+	static TArray<FFastGameAssetPack> ListPacksFromGameTip(const TSharedPtr<FJsonObject>& GameTip);
 };
 
 class FASTGAME_API FFastGameAds

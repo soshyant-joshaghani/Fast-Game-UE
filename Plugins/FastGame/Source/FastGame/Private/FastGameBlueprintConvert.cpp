@@ -17,6 +17,17 @@ namespace FastGameBlueprintConvert
 		return Out;
 	}
 
+	TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText)
+	{
+		TSharedPtr<FJsonValue> Root;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid() || Root->Type != EJson::Object)
+		{
+			return nullptr;
+		}
+		return Root->AsObject();
+	}
+
 	FFastGameBPCatalogEntry ToBP(const FFastGameCatalogEntry& In)
 	{
 		FFastGameBPCatalogEntry Out;
@@ -66,6 +77,10 @@ namespace FastGameBlueprintConvert
 		Out.Version = In.Version;
 		Out.Url = In.Url;
 		Out.Hash = In.Hash;
+		Out.Quality = In.Quality;
+		Out.Platforms = In.Platforms;
+		Out.Languages = In.Languages;
+		Out.Kind = In.Kind;
 		return Out;
 	}
 

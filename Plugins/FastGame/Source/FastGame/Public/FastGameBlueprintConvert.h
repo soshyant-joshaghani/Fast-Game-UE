@@ -7,6 +7,7 @@
 namespace FastGameBlueprintConvert
 {
 	FString JsonObjectToString(const TSharedPtr<FJsonObject>& Obj);
+	TSharedPtr<FJsonObject> ParseJsonObject(const FString& JsonText);
 
 	FFastGameBPCatalogEntry ToBP(const FFastGameCatalogEntry& In);
 	FFastGameBPMode ToBP(const FFastGameMode& In);

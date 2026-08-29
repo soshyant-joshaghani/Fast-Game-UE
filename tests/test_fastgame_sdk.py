@@ -228,7 +228,40 @@ def test_ue_tip_facade_content_methods():
     assert "GetBootstrap" in contract
     assert "GetGameConfig" in contract
     assert "GetMapConfig" in contract
+    assert "GetPackTip" in header
+    assert "/apps/games/asset-packs/" in cpp
     assert "deprecated for players" in contract.lower()
+
+
+def test_ue_download_pack_filter_and_platform():
+    types = _read(UE / "Source/FastGame/Public/FastGameTypes.h")
+    bp_types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    selector = _read(UE / "Source/FastGame/Public/FastGamePackSelector.h")
+    platform = _read(UE / "Source/FastGame/Public/FastGameRuntimePlatform.h")
+    download = _read(UE / "Source/FastGame/Public/FastGameDownloadSceneComponent.h")
+    sub_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    client = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+
+    assert "TArray<FString> Quality" in types
+    assert "TArray<FString> Platforms" in types
+    assert "TArray<FString> Languages" in types
+    assert "Kind" in types
+    assert "TArray<FString> Quality" in bp_types
+
+    assert "FFastGamePackSelector" in selector
+    assert "MatchesTagList" in selector
+    assert "GetRuntimeOs" in platform
+    assert "GetQualityClass" in platform
+    assert "StorePlatformToOs" in platform
+
+    assert "RunDownload" in download
+    assert "Tip not published" in _read(UE / "Source/FastGame/Private/FastGameDownloadSceneComponent.cpp")
+    assert "ListPacksFromGameTip" in client
+    assert 'TEXT("payload")' in client or 'TEXT("asset_packs")' in client
+    assert "GetPackTip" in client
+    assert "Filter Packs For Download" in sub_h
+    assert "Get Preferred Language" in sub_h
+    assert "List Packs From Game Config Json" in sub_h
 
 
 def test_ue_realtime_joinmap_seat():

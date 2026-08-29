@@ -80,6 +80,14 @@ struct FASTGAME_API FFastGameAssetPack
 	FString Version;
 	FString Url;
 	FString Hash;
+	/** mobile | pc | * — DOWNLOAD filter (A4). */
+	TArray<FString> Quality;
+	/** android | ios | windows | mac | web | * */
+	TArray<FString> Platforms;
+	/** BCP-47 tags or * — matched to preferred_language. */
+	TArray<FString> Languages;
+	/** content | locale | splash | upscale */
+	FString Kind = TEXT("content");
 };
 
 struct FASTGAME_API FFastGameCatalogDetail : public FFastGameCatalogEntry

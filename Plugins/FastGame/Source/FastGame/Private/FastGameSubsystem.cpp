@@ -1,6 +1,9 @@
 #include "FastGameSubsystem.h"
 #include "FastGameBlueprintConvert.h"
 #include "FastGameClient.h"
+#include "FastGamePackSelector.h"
+#include "FastGameRuntimePlatform.h"
+#include "FastGameLocalePrefs.h"
 #include "FastGameHttp.h"
 #include "FastGameIdentity.h"
 #include "FastGameLatentActions.h"
@@ -214,6 +217,57 @@ bool UFastGameSubsystem::EnsureClient(FString& OutError) const
 		return false;
 	}
 	return true;
+}
+
+void UFastGameSubsystem::BroadcastAuthComplete(EFastGameAuthCompleteReason Reason)
+{
+	OnAuthComplete.Broadcast(Reason);
+}
+
+void UFastGameSubsystem::BackToEnterId()
+{
+	bForgotPasswordFlow = false;
+	bOtpAutoSentThisVisit = false;
+	OnBackToEnterId.Broadcast(true, TEXT(""));
+}
+
+void UFastGameSubsystem::BeginForgotPassword()
+{
+	bForgotPasswordFlow = true;
+	bOtpAutoSentThisVisit = false;
+}
+
+void UFastGameSubsystem::NotifyOtpPageShown(bool bAutoSend)
+{
+	if (!bAutoSend || bOtpAutoSentThisVisit)
+	{
+		return;
+	}
+	if (LastEnterRoute != EFastGameEnterRoute::VerifyId && !bForgotPasswordFlow)
+	{
+		return;
+	}
+	FString Err;
+	if (!EnsureClient(Err) || !Client.IsValid())
+	{
+		return;
+	}
+	bOtpAutoSentThisVisit = true;
+	const FString Identity = GetEnteredIdentity();
+	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
+	{
+		Client->Auth->RequestSignupVerification(Identity,
+			[this](bool bOk, int32 Code, FString InMessage)
+			{
+				FastGameSubsystemLatent::SetLastRequest(this, Code, InMessage);
+			});
+		return;
+	}
+	Client->Auth->RequestPasswordRecovery(Identity,
+		[this](bool bOk, int32 Code, FString InMessage)
+		{
+			FastGameSubsystemLatent::SetLastRequest(this, Code, InMessage);
+		});
 }
 
 bool UFastGameSubsystem::EnsureStoreSetup(FString& OutMessage) const
@@ -668,6 +722,11 @@ void UFastGameSubsystem::Enter(
 		if (UFastGameSubsystem* S = WeakThis.Get())
 		{
 			S->LastEnterRoute = InRoute;
+			if (bOk)
+			{
+				S->bForgotPasswordFlow = false;
+				S->bOtpAutoSentThisVisit = false;
+			}
 		}
 		State->EnterRoute = InRoute;
 		State->EnterPin = FastGameSubsystemLatent::EnterRouteToPin(InRoute);
@@ -793,6 +852,10 @@ void UFastGameSubsystem::Login(
 					S->bLastLoginSucceeded = bOk;
 					FastGameSubsystemLatent::SetLastRequest(S, Code, InMessage);
 					S->OnLoginComplete.Broadcast(bOk, Code, InMessage);
+					if (bOk)
+					{
+						S->BroadcastAuthComplete(EFastGameAuthCompleteReason::Login);
+					}
 				}
 			}
 			Finish(bOk, Code, InMessage);
@@ -877,6 +940,10 @@ void UFastGameSubsystem::Signup(
 					if (bOk)
 					{
 						S->OnLoginComplete.Broadcast(true, Code, TEXT(""));
+						S->BroadcastAuthComplete(
+							S->LastEnterRoute == EFastGameEnterRoute::CompleteAccount
+								? EFastGameAuthCompleteReason::Login
+								: EFastGameAuthCompleteReason::Signup);
 					}
 				}
 			}
@@ -926,11 +993,20 @@ void UFastGameSubsystem::ConfirmPasswordRecovery(
 	}
 
 	// Step 3 after Verify — empty Code; backend uses the already-verified challenge.
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
 	Client->Auth->ConfirmPasswordRecovery(Identity, TEXT(""), NewPassword, NewPasswordConfirm,
-		[Finish](bool bOk, int32 Status, FString InMessage)
+		[WeakThis, Finish](bool bOk, int32 Status, FString InMessage)
 		{
-			AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Finish, bOk, Status, InMessage]()
 			{
+				if (UFastGameSubsystem* S = WeakThis.Get())
+				{
+					if (bOk)
+					{
+						S->bLastLoginSucceeded = true;
+						S->BroadcastAuthComplete(EFastGameAuthCompleteReason::PasswordRecovery);
+					}
+				}
 				Finish(bOk, Status, InMessage);
 			});
 		});
@@ -3560,4 +3636,69 @@ void UFastGameSubsystem::BreakAdvertisement(
 TArray<FFastGameBPAssetPack> UFastGameSubsystem::ListPacksFromGameDetail(const FFastGameBPCatalogDetail& Detail) const
 {
 	return Detail.AssetPacks;
+}
+
+TArray<FFastGameBPAssetPack> UFastGameSubsystem::ListPacksFromGameConfigJson(const FString& GameConfigJson) const
+{
+	const TSharedPtr<FJsonObject> Root = FastGameBlueprintConvert::ParseJsonObject(GameConfigJson);
+	return FastGameBlueprintConvert::ToBPArray(FFastGameAssets::ListPacksFromGameTip(Root));
+}
+
+TArray<FFastGameBPAssetPack> UFastGameSubsystem::FilterPacksForDownload(
+	const TArray<FFastGameBPAssetPack>& Packs,
+	const FString& PreferredLanguage,
+	bool bSkipSplashPacks) const
+{
+	TArray<FFastGameAssetPack> Native;
+	for (const FFastGameBPAssetPack& Pack : Packs)
+	{
+		FFastGameAssetPack Out;
+		Out.Id = Pack.Id;
+		Out.PackId = Pack.PackId;
+		Out.Label = Pack.Label;
+		Out.Revision = Pack.Revision;
+		Out.Version = Pack.Version;
+		Out.Url = Pack.Url;
+		Out.Hash = Pack.Hash;
+		Out.Quality = Pack.Quality;
+		Out.Platforms = Pack.Platforms;
+		Out.Languages = Pack.Languages;
+		Out.Kind = Pack.Kind;
+		Native.Add(Out);
+	}
+
+	FFastGameDownloadContext Context;
+	Context.PreferredLanguage = PreferredLanguage.IsEmpty() ? FFastGameLocalePrefs::Get(TEXT("en")) : PreferredLanguage;
+	Context.RuntimeOs = FFastGameRuntimePlatform::GetRuntimeOs();
+	const FString StoreOs = FFastGameRuntimePlatform::StorePlatformToOs(GetStorePlatformId());
+#if WITH_EDITOR
+	if (!StoreOs.IsEmpty() && !Context.RuntimeOs.Equals(StoreOs, ESearchCase::IgnoreCase))
+	{
+		Context.RuntimeOs = StoreOs;
+	}
+#endif
+	Context.QualityClass = FFastGameRuntimePlatform::GetQualityClass(Context.RuntimeOs);
+	Context.bSkipSplashPacks = bSkipSplashPacks;
+
+	return FastGameBlueprintConvert::ToBPArray(FFastGamePackSelector::ListForDownload(Native, Context));
+}
+
+void UFastGameSubsystem::SetPreferredLanguage(const FString& Language)
+{
+	FFastGameLocalePrefs::Set(Language);
+}
+
+FString UFastGameSubsystem::GetPreferredLanguage() const
+{
+	return FFastGameLocalePrefs::Get(TEXT("en"));
+}
+
+FString UFastGameSubsystem::GetRuntimeOs() const
+{
+	return FFastGameRuntimePlatform::GetRuntimeOs();
+}
+
+FString UFastGameSubsystem::GetQualityClass() const
+{
+	return FFastGameRuntimePlatform::GetQualityClass();
 }

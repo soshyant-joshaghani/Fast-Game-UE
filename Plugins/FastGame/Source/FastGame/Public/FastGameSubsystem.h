@@ -207,6 +207,17 @@ public:
 		int32& StatusCode,
 		FString& Message);
 
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Back To Enter ID"))
+	void BackToEnterId();
+
+	/** Call from OTP widget OnShown — auto-sends OTP once per visit when enabled. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Notify OTP Page Shown"))
+	void NotifyOtpPageShown(bool bAutoSend = true);
+
+	/** Enter Password → forgot → OTP recovery (sets forgot flow flag). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (DisplayName = "Begin Forgot Password"))
+	void BeginForgotPassword();
+
 	/**
 	 * Shared OTP send. Empty Identity → ENTER store.
 	 * Enter → Verify → signup OTP; Enter Password → recovery OTP (forgot); otherwise fails.
@@ -792,13 +803,43 @@ public:
 
 	// --- Assets ---
 
+	UFUNCTION(BlueprintPure, Category = "FastGame|Assets", meta = (DisplayName = "List Packs From Game Config Json"))
+	TArray<FFastGameBPAssetPack> ListPacksFromGameConfigJson(const FString& GameConfigJson) const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Assets", meta = (DisplayName = "Filter Packs For Download"))
+	TArray<FFastGameBPAssetPack> FilterPacksForDownload(
+		const TArray<FFastGameBPAssetPack>& Packs,
+		const FString& PreferredLanguage,
+		bool bSkipSplashPacks = true) const;
+
 	UFUNCTION(BlueprintPure, Category = "FastGame|Assets")
 	TArray<FFastGameBPAssetPack> ListPacksFromGameDetail(const FFastGameBPCatalogDetail& Detail) const;
+
+	// --- Language / platform (DOWNLOAD) ---
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Language", meta = (DisplayName = "Set Preferred Language"))
+	void SetPreferredLanguage(const FString& Language);
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Language", meta = (DisplayName = "Get Preferred Language"))
+	FString GetPreferredLanguage() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Platform", meta = (DisplayName = "Get Runtime Os"))
+	FString GetRuntimeOs() const;
+
+	UFUNCTION(BlueprintPure, Category = "FastGame|Platform", meta = (DisplayName = "Get Quality Class"))
+	FString GetQualityClass() const;
 
 	// --- Delegates ---
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
 	FOnFastGameLoginComplete OnLoginComplete;
+
+	/** Fires once when the player has a session (login, signup, or password recovery). Wire BP_2_AUTH → DOWNLOAD. */
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameAuthComplete OnAuthComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
+	FOnFastGameSimpleComplete OnBackToEnterId;
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Auth")
 	FOnFastGameSignupComplete OnSignupComplete;
@@ -814,6 +855,9 @@ public:
 	/** Route from the most recent Enter (drives Send/Verify Auth Code). */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
 	EFastGameEnterRoute LastEnterRoute = EFastGameEnterRoute::Failed;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bForgotPasswordFlow = false;
 
 	/** Cached profile from the last successful GetMe — bind Text / Image widgets to fields. */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
@@ -907,6 +951,7 @@ public:
 
 private:
 	bool EnsureClient(FString& OutError) const;
+	void BroadcastAuthComplete(EFastGameAuthCompleteReason Reason);
 	bool EnsureStoreSetup(FString& OutMessage) const;
 	void SyncNativeStorePublicKey();
 	void EnsureStoreVerifyKey(TFunction<void(bool, FString)>&& OnDone);
@@ -935,6 +980,7 @@ private:
 	bool bShopUnlockInFlight = false;
 	FDelegateHandle AppReactivatedHandle;
 	FDelegateHandle AppForegroundHandle;
+	bool bOtpAutoSentThisVisit = false;
 };
 
 /** Internal Blueprint ads helpers (friend of UFastGameSubsystem). */

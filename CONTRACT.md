@@ -22,7 +22,7 @@ Fast Game does **not** wrap Colyseus join/send/leave. Studios mint a seat via Fa
 | Progress | `client.Progress` | `Get` / `Save` → official `user_progress` events (no client score/win) |
 | Shop | `client.Shop` | `GetCatalog` (`lang`, `expandI18n`; empty `GameId` → Initialize Game `GameCode`), `ClaimFree`, `RedeemCode`, **Unlock Sku** / **Complete Unlock** (`POST …/shop/unlock/begin|complete`), **Shop Progress** / Unlock / Complete Unlock (exec pins: Purchase Successful / Pending / Failed / Cancelled / Store Missing), `GetShopSkuAccess` (UE pins: Owned / Available / Locked / Failed), Claim/Redeem/Catalog Success \| Failed. Empty shop `GameCode` / `Provider` → Initialize Game (same as Enter empty Identity). Unlock Sku has no Provider pin — always Initialize Game `StorePlatform`. |
 | Store | `FastGameStore` (internal OS) | Android Myket / Cafe Bazaar / Google Play. One flavor per APK, **inside** Unity `Plugins/Android/FastGameStore` and Unreal `Plugins/FastGameStore`. **Automatically follows** Initialize Game (install check + public key). Designers do **not** call FastGameStore — use Fast Game **Unlock Sku**. iOS StoreKit later (`unity/Plugins/iOS`, `unreal/Plugins/FastGameStore/iOS`). |
-| Assets | `client.Assets` | Pack `url` + `hash` helpers from catalog detail |
+| Assets | `client.Assets` | Pack `url` + `hash` from published tip; **Filter Packs For Download** (quality × OS × language); cache under `Saved/FastGame/packs` (UE) / `persistentDataPath/fastgame/packs` (Unity). **Publish tip** required — draft `/asset-packs` APIs are panel-only. |
 | Ads | `client.Ads` | `GetAdvertisement` (null / `bHasAd=false` on HTTP 204), `TrackEvent` (`AdvertisementDisplayed` / `Clicked` / `Closed`) |
 
 ## HTTP paths (client)
