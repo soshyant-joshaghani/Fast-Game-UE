@@ -281,6 +281,36 @@ def test_ue_realtime_joinmap_seat():
     assert "designer-chosen" in contract.lower() or "designer-chosen" in contract
 
 
+def test_ue_map_hub_and_engine_scene():
+    types = _read(UE / "Source/FastGame/Public/FastGameTypes.h")
+    bp_types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    client = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    convert = _read(UE / "Source/FastGame/Private/FastGameBlueprintConvert.cpp")
+    menu_h = _read(UE / "Source/FastGame/Public/FastGameMenuSceneComponent.h")
+    menu_cpp = _read(UE / "Source/FastGame/Private/FastGameMenuSceneComponent.cpp")
+    scene_names = _read(UE / "Source/FastGame/Public/FastGameSceneNames.h")
+
+    assert "FFastGameMapRuntimeSettings" in types
+    assert "EngineScene" in types
+    assert "MapKind" in types
+    assert "HubMapIds" in types
+    assert "AbilityAllowlist" in types
+    assert "FFastGameBPMapRuntimeSettings" in bp_types
+    assert "HubMapIds" in bp_types
+    assert "ParseMapKind" in client
+    assert "ParseMapRuntimeSettings" in client
+    assert "ParseMap(" in client
+    assert "hub_map_ids" in client
+    assert "runtime_settings" in client
+    assert "Out.MapKind = In.MapKind" in convert
+    assert "Out.HubMapIds = In.HubMapIds" in convert
+    assert "OpenLevelFromMap" in menu_h
+    assert "OpenLevelFromMap" in menu_cpp
+    assert "engine_scene is not configured" in menu_cpp
+    assert "DefaultLevelScene" not in menu_h
+    assert "LevelSample" not in scene_names
+
+
 def test_ue_progress_get_save():
     header = _read(UE / "Source/FastGame/Public/FastGameClient.h")
     cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")

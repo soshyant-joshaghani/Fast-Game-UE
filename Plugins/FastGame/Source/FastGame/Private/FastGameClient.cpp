@@ -65,6 +65,88 @@ namespace FastGameJsonUtil
 		}
 	}
 
+	static FFastGameMapRuntimeSettings ParseMapRuntimeSettings(const TSharedPtr<FJsonObject>& Raw)
+	{
+		FFastGameMapRuntimeSettings S;
+		if (!Raw.IsValid())
+		{
+			return S;
+		}
+		ParseStringArray(Raw, TEXT("ability_allowlist"), S.AbilityAllowlist);
+		bool bVal = true;
+		if (Raw->TryGetBoolField(TEXT("chat_enabled"), bVal))
+		{
+			S.bChatEnabled = bVal;
+		}
+		bVal = true;
+		if (Raw->TryGetBoolField(TEXT("emoji_enabled"), bVal))
+		{
+			S.bEmojiEnabled = bVal;
+		}
+		if (Raw->HasField(TEXT("max_players")))
+		{
+			double Mp = 0;
+			if (Raw->TryGetNumberField(TEXT("max_players"), Mp) && Mp > 0)
+			{
+				S.MaxPlayers = static_cast<int32>(Mp);
+			}
+		}
+		return S;
+	}
+
+	static FString ParseMapKind(const TSharedPtr<FJsonObject>& M)
+	{
+		FString Kind;
+		if (M.IsValid()
+			&& (M->TryGetStringField(TEXT("map_kind"), Kind) || M->TryGetStringField(TEXT("kind"), Kind)))
+		{
+			Kind = Kind.ToLower().TrimStartAndEnd();
+			if (Kind == TEXT("hub"))
+			{
+				return TEXT("hub");
+			}
+		}
+		return TEXT("level");
+	}
+
+	static FFastGameMap ParseMap(const TSharedPtr<FJsonObject>& M)
+	{
+		FFastGameMap Map;
+		if (!M.IsValid())
+		{
+			return Map;
+		}
+		M->TryGetStringField(TEXT("id"), Map.Id);
+		M->TryGetStringField(TEXT("map_id"), Map.MapId);
+		M->TryGetStringField(TEXT("label"), Map.Label);
+		M->TryGetStringField(TEXT("engine_scene"), Map.EngineScene);
+		Map.MapKind = ParseMapKind(M);
+		ParseStringArray(M, TEXT("hub_map_ids"), Map.HubMapIds);
+		const TSharedPtr<FJsonObject>* Rs = nullptr;
+		if (M->TryGetObjectField(TEXT("runtime_settings"), Rs) && Rs && Rs->IsValid())
+		{
+			Map.RuntimeSettings = ParseMapRuntimeSettings(*Rs);
+		}
+		M->TryGetBoolField(TEXT("purchasable"), Map.bPurchasable);
+		double Price = 0;
+		M->TryGetNumberField(TEXT("price"), Price);
+		Map.Price = static_cast<int32>(Price);
+		const TSharedPtr<FJsonObject>* MapTr = nullptr;
+		if (M->TryGetObjectField(TEXT("translations"), MapTr) && MapTr)
+		{
+			Map.Translations = *MapTr;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* SM = nullptr;
+		if (M->TryGetArrayField(TEXT("supported_modes"), SM) && SM)
+		{
+			for (const auto& S : *SM)
+			{
+				Map.SupportedModes.Add(S->AsString());
+			}
+		}
+		return Map;
+	}
+
 	static FFastGameAssetPack ParseAssetPack(const TSharedPtr<FJsonObject>& P)
 	{
 		FFastGameAssetPack Pack;
@@ -156,24 +238,7 @@ namespace FastGameJsonUtil
 			{
 				const TSharedPtr<FJsonObject> M = V->AsObject();
 				if (!M.IsValid()) continue;
-				FFastGameMap Map;
-				M->TryGetStringField(TEXT("id"), Map.Id);
-				M->TryGetStringField(TEXT("map_id"), Map.MapId);
-				M->TryGetStringField(TEXT("label"), Map.Label);
-				M->TryGetStringField(TEXT("engine_scene"), Map.EngineScene);
-				M->TryGetBoolField(TEXT("purchasable"), Map.bPurchasable);
-				double Price = 0;
-				M->TryGetNumberField(TEXT("price"), Price);
-				Map.Price = static_cast<int32>(Price);
-				const TSharedPtr<FJsonObject>* MapTr = nullptr;
-				if (M->TryGetObjectField(TEXT("translations"), MapTr) && MapTr)
-					Map.Translations = *MapTr;
-				const TArray<TSharedPtr<FJsonValue>>* SM = nullptr;
-				if (M->TryGetArrayField(TEXT("supported_modes"), SM) && SM)
-				{
-					for (const auto& S : *SM) Map.SupportedModes.Add(S->AsString());
-				}
-				D.Maps.Add(Map);
+				D.Maps.Add(ParseMap(M));
 			}
 		}
 		const TArray<TSharedPtr<FJsonValue>>* Packs = nullptr;

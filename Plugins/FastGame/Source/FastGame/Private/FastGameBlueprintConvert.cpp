@@ -61,6 +61,12 @@ namespace FastGameBlueprintConvert
 		Out.MapId = In.MapId;
 		Out.Label = In.Label;
 		Out.EngineScene = In.EngineScene;
+		Out.MapKind = In.MapKind;
+		Out.HubMapIds = In.HubMapIds;
+		Out.RuntimeSettings.AbilityAllowlist = In.RuntimeSettings.AbilityAllowlist;
+		Out.RuntimeSettings.bChatEnabled = In.RuntimeSettings.bChatEnabled;
+		Out.RuntimeSettings.bEmojiEnabled = In.RuntimeSettings.bEmojiEnabled;
+		Out.RuntimeSettings.MaxPlayers = In.RuntimeSettings.MaxPlayers;
 		Out.SupportedModes = In.SupportedModes;
 		Out.bPurchasable = In.bPurchasable;
 		Out.Price = In.Price;

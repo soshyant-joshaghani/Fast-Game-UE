@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "FastGameBlueprintTypes.h"
 #include "FastGameMenuSceneComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFastGameMenuPageChanged);
@@ -72,4 +73,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Menu")
 	void OpenLevel(FName LevelScene);
+
+	/** Loads catalog engine_scene for a map row (Play solo parity with Unity menu). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Menu")
+	void OpenLevelFromMap(const FFastGameBPMap& Map);
 };

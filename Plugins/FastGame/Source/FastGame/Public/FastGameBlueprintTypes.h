@@ -60,6 +60,25 @@ struct FASTGAME_API FFastGameBPMode
 };
 
 USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPMapRuntimeSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FString> AbilityAllowlist;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	bool bChatEnabled = true;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	bool bEmojiEnabled = true;
+
+	/** 0 = unlimited (typical for hubs). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	int32 MaxPlayers = 0;
+};
+
+USTRUCT(BlueprintType)
 struct FASTGAME_API FFastGameBPMap
 {
 	GENERATED_BODY()
@@ -75,6 +94,15 @@ struct FASTGAME_API FFastGameBPMap
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	FString EngineScene;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString MapKind = TEXT("level");
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FString> HubMapIds;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FFastGameBPMapRuntimeSettings RuntimeSettings;
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	TArray<FString> SupportedModes;

@@ -60,13 +60,26 @@ struct FASTGAME_API FFastGameMode
 	FString Kind;
 };
 
+struct FASTGAME_API FFastGameMapRuntimeSettings
+{
+	TArray<FString> AbilityAllowlist;
+	bool bChatEnabled = true;
+	bool bEmojiEnabled = true;
+	/** 0 = unlimited (typical for hubs). */
+	int32 MaxPlayers = 0;
+};
+
 struct FASTGAME_API FFastGameMap
 {
 	FString Id;
 	FString MapId;
 	FString Label;
-	/** Unity / UE Build Settings scene NAME for this map. */
+	/** Unity / UE level map asset NAME from catalog engine_scene. */
 	FString EngineScene;
+	/** level | hub */
+	FString MapKind = TEXT("level");
+	TArray<FString> HubMapIds;
+	FFastGameMapRuntimeSettings RuntimeSettings;
 	TArray<FString> SupportedModes;
 	bool bPurchasable = false;
 	int32 Price = 0;
