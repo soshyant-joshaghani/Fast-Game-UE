@@ -235,6 +235,19 @@ namespace FastGameBlueprintConvert
 		return Out;
 	}
 
+	FFastGameBPSeatMint ToBP(const FFastGameSeatMint& In)
+	{
+		FFastGameBPSeatMint Out;
+		Out.SeatToken = In.SeatToken;
+		Out.ExpiresAt = In.ExpiresAt;
+		Out.GameServerUrl = In.GameServerUrl;
+		Out.RoomName = In.RoomName;
+		Out.GameId = In.GameId;
+		Out.MapId = In.MapId;
+		Out.ModeId = In.ModeId;
+		return Out;
+	}
+
 	FFastGameShopLine FromBP(const FFastGameBPShopLine& In)
 	{
 		FFastGameShopLine Out;
@@ -316,6 +329,16 @@ namespace FastGameBlueprintConvert
 		if (Id == TEXT("zarinpal")) return EFastGameStorePlatform::ZarinPal;
 		if (Id == TEXT("appstore")) return EFastGameStorePlatform::AppStore;
 		return EFastGameStorePlatform::Unset;
+	}
+
+	FString ProjectStageToWire(EFastGameProjectStage Stage)
+	{
+		switch (Stage)
+		{
+		case EFastGameProjectStage::Production: return TEXT("production");
+		case EFastGameProjectStage::EarlyAccess: return TEXT("early_access");
+		default: return TEXT("dev");
+		}
 	}
 
 	EFastGameShopProgress ClassifyShopProgress(bool bOwned, bool bPending, bool bOk, const FString& Message)

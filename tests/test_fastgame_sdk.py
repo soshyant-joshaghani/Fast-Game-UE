@@ -337,3 +337,70 @@ def test_ue_modules_present():
     ):
         path = UE / rel
         assert path.is_file(), rel
+
+
+def test_ue_entity_components_and_flow_pins():
+    types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    char_h = _read(UE / "Source/FastGame/Public/FastGameCharacterComponent.h")
+    char_cpp = _read(UE / "Source/FastGame/Private/FastGameCharacterComponent.cpp")
+    map_h = _read(UE / "Source/FastGame/Public/FastGameMapComponent.h")
+    map_cpp = _read(UE / "Source/FastGame/Private/FastGameMapComponent.cpp")
+    avatar_h = _read(UE / "Source/FastGame/Public/FastGameAvatarComponent.h")
+    title_h = _read(UE / "Source/FastGame/Public/FastGameTitleComponent.h")
+    ach_h = _read(UE / "Source/FastGame/Public/FastGameAchievementComponent.h")
+    sub_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    sub_cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
+    contract = _read(ROOT / "CONTRACT.md")
+
+    assert "EFastGameTravelMapPin" in types
+    assert "EFastGameQuestPin" in types
+    assert 'Traveled UMETA(DisplayName = "Traveled")' in types
+    assert 'Matchmaking UMETA(DisplayName = "Matchmaking")' in types
+    assert 'WaitingHere UMETA(DisplayName = "Waiting Here")' in types
+    assert 'Complete UMETA(DisplayName = "Complete")' in types
+    assert 'NotStartedYet UMETA(DisplayName = "Not Started Yet")' in types
+    assert "FFastGameBPSeatMint" in types
+
+    for path in (
+        "Source/FastGame/Public/FastGameCharacterComponent.h",
+        "Source/FastGame/Private/FastGameCharacterComponent.cpp",
+        "Source/FastGame/Public/FastGameMapComponent.h",
+        "Source/FastGame/Private/FastGameMapComponent.cpp",
+        "Source/FastGame/Public/FastGameAvatarComponent.h",
+        "Source/FastGame/Private/FastGameAvatarComponent.cpp",
+        "Source/FastGame/Public/FastGameTitleComponent.h",
+        "Source/FastGame/Private/FastGameTitleComponent.cpp",
+        "Source/FastGame/Public/FastGameAchievementComponent.h",
+        "Source/FastGame/Private/FastGameAchievementComponent.cpp",
+    ):
+        assert (UE / path).is_file(), path
+
+    assert "CharacterId" in char_h
+    assert "Fetch Character" in char_h
+    assert "OnCharacterFetched" in char_h
+    assert "GetCharacter" in char_cpp
+
+    assert "MapId" in map_h and "ModeId" in map_h
+    assert 'DisplayName = "Get Map Config"' in map_h
+    assert 'ExpandEnumAsExecs = "Pin"' in map_h
+    assert 'DisplayName = "Travel Map"' in map_h
+    assert "OnQuestComplete" in map_h
+    assert "OnQuestFailed" in map_h
+    assert "OnQuestNotStartedYet" in map_h
+    assert "NotifyQuestComplete" in map_h
+    assert "JoinMap" in map_cpp or "MintSeat" in map_cpp
+    assert "OpenLevel" in map_cpp
+
+    assert "AvatarId" in avatar_h
+    assert "TitleId" in title_h
+    assert "AchievementId" in ach_h
+
+    assert 'DisplayName = "Get Character"' in sub_h
+    assert "void UFastGameSubsystem::GetCharacter" in sub_cpp
+    assert "OnGetCharacterComplete" in sub_h
+
+    assert "FastGameCharacterComponent" in contract
+    assert "FastGameMapComponent" in contract
+    assert "Travel Map" in contract
+    assert "sdk-pin-policy.md" in contract
+    assert "Not Started Yet" in contract

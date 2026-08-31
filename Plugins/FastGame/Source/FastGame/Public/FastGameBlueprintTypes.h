@@ -479,6 +479,15 @@ enum class EFastGameStorePlatform : uint8
 	AppStore UMETA(DisplayName = "App Store"),
 };
 
+/** Client build stage — access token must match this stage on Initialize Client. */
+UENUM(BlueprintType)
+enum class EFastGameProjectStage : uint8
+{
+	Dev UMETA(DisplayName = "Dev"),
+	Production UMETA(DisplayName = "Production"),
+	EarlyAccess UMETA(DisplayName = "Early Access"),
+};
+
 /** How Enter / Login interpret Identity: Auto detects email vs phone. */
 UENUM(BlueprintType)
 enum class EFastGameIdentityChannel : uint8
@@ -575,6 +584,53 @@ enum class EFastGameShopProgress : uint8
 	StoreMissing UMETA(DisplayName = "Store Missing"),
 };
 
+/** Travel Map exec pins (Flow action — offline open level vs online seat mint). */
+UENUM(BlueprintType)
+enum class EFastGameTravelMapPin : uint8
+{
+	Traveled UMETA(DisplayName = "Traveled"),
+	Matchmaking UMETA(DisplayName = "Matchmaking"),
+	WaitingHere UMETA(DisplayName = "Waiting Here"),
+	Failed UMETA(DisplayName = "Failed"),
+};
+
+/** ON_QUEST listener exec pins (Flow listener). */
+UENUM(BlueprintType)
+enum class EFastGameQuestPin : uint8
+{
+	Complete UMETA(DisplayName = "Complete"),
+	Failed UMETA(DisplayName = "Failed"),
+	NotStartedYet UMETA(DisplayName = "Not Started Yet"),
+};
+
+/** JoinMap seat mint for Blueprint (Realtime.JoinMap step 1). */
+USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPSeatMint
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString SeatToken;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString ExpiresAt;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString GameServerUrl;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString RoomName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString GameId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString MapId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString ModeId;
+};
+
 // --- Dynamic multicast delegates (async Blueprint events) ---
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameLoginComplete, bool, bSuccess, int32, StatusCode, const FString&, Message);
@@ -589,6 +645,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameGetGameServer, bool, b
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameListCharacters, bool, bSuccess, const TArray<FFastGameBPCharacter>&, Characters, const FString&, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGamePrepareSession, bool, bSuccess, const FFastGameBPPreparedSession&, Session, const FString&, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameJsonResult, bool, bSuccess, const FString&, JsonBody, const FString&, Error);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameCharacterConfigFetched, bool, bSuccess, const FString&, JsonBody, const FString&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameMapConfigFetched, bool, bSuccess, const FString&, JsonBody, const FString&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFastGameQuestPin, FName, QuestId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameLoadout, bool, bSuccess, const FFastGameBPLoadout&, Loadout, const FString&, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameShopCatalog, bool, bSuccess, const TArray<FFastGameBPShopLine>&, Lines, const FString&, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnFastGameShopSkuAccess, bool, bSuccess, bool, bLocked, bool, bOwned, const FString&, Error);

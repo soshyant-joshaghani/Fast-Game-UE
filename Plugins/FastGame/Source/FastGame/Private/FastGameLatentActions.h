@@ -52,6 +52,9 @@ struct FFastGameRequestLatentState
 	EFastGameAuthCheck AuthCheck = EFastGameAuthCheck::Failed;
 	EFastGameShopAccessRoute ShopAccessRoute = EFastGameShopAccessRoute::Failed;
 	EFastGameShopProgress ShopProgress = EFastGameShopProgress::Failed;
+	EFastGameTravelMapPin TravelMapPin = EFastGameTravelMapPin::Failed;
+	EFastGameQuestPin QuestPin = EFastGameQuestPin::NotStartedYet;
+	FFastGameBPSeatMint SeatMint;
 	FString OutIdentity;
 	bool bOutEmail = false;
 	bool bOutPhone = false;
@@ -110,6 +113,9 @@ public:
 	EFastGameAuthCheck* AuthCheckOut = nullptr;
 	EFastGameShopAccessRoute* ShopAccessRouteOut = nullptr;
 	EFastGameShopProgress* ShopProgressOut = nullptr;
+	EFastGameTravelMapPin* TravelMapPinOut = nullptr;
+	EFastGameQuestPin* QuestPinOut = nullptr;
+	FFastGameBPSeatMint* SeatMintOut = nullptr;
 	FString* OutIdentityOut = nullptr;
 	bool* bOutEmailOut = nullptr;
 	bool* bOutPhoneOut = nullptr;
@@ -169,6 +175,9 @@ public:
 			if (AuthCheckOut) *AuthCheckOut = State->AuthCheck;
 			if (ShopAccessRouteOut) *ShopAccessRouteOut = State->ShopAccessRoute;
 			if (ShopProgressOut) *ShopProgressOut = State->ShopProgress;
+			if (TravelMapPinOut) *TravelMapPinOut = State->TravelMapPin;
+			if (QuestPinOut) *QuestPinOut = State->QuestPin;
+			if (SeatMintOut) *SeatMintOut = State->SeatMint;
 			if (OutIdentityOut) *OutIdentityOut = State->OutIdentity;
 			if (bOutEmailOut) *bOutEmailOut = State->bOutEmail;
 			if (bOutPhoneOut) *bOutPhoneOut = State->bOutPhone;

@@ -109,6 +109,32 @@ Designers use **Realtime.JoinMap** only — do **not** teach raw Colyseus join w
 
 Prefer seat over public `Catalog.GetGameServer` / `GET /utils/game-server/` for online join. Fast Game ships a thin `MintSeat` / `JoinMap` HTTP helper; full Colyseus wrap is **not** required inside this plugin.
 
+## Entity components (LEVEL prefabs)
+
+Slim **Blueprint-spawnable components** bind locale-free catalog **NAME**s on prefabs. Config/ownership comes from Fast-Game tip + Progress/Shop; meshes, portraits, and UI use **local project assets**.
+
+| Component | NAME property | Fetches / actions |
+|-----------|---------------|-------------------|
+| **FastGameCharacterComponent** | `CharacterId` | `Fetch Character` → tip GetCharacter; `OnCharacterFetched` |
+| **FastGameMapComponent** | `MapId`, `ModeId` | `Get Map Config` → tip GetMapConfig; **Travel Map** (exec pins below); ON_QUEST listener events |
+| **FastGameAvatarComponent** | `AvatarId` | bind only (ownership via Shop/Progress) |
+| **FastGameTitleComponent** | `TitleId` | bind only |
+| **FastGameAchievementComponent** | `AchievementId` | bind only |
+
+**Exec pin policy:** Auth-style named exec pins — no redundant `bSuccess` on scenario nodes. Canonical pin **DisplayNames** and Flow/LEVEL rules: [fast-game/docs/sdk-pin-policy.md](../fast-game/docs/sdk-pin-policy.md).
+
+| Node | Exec pins (UE Blueprint / Unity events) |
+|------|---------------------------------------|
+| **Travel Map** | Traveled \| Matchmaking \| Waiting Here \| Failed |
+| **ON_QUEST** (listener) | Complete \| Failed \| Not Started Yet |
+
+- **Traveled** — solo/offline: target map `engine_scene` opened via `OpenLevel`.
+- **Matchmaking** — online mode: seat minted (`FFastGameBPSeatMint`); join sibling Colyseus with `seat_token`, then open level.
+- **Waiting Here** — travel target is the current map (stay put; online may still mint seat).
+- **Failed** — HTTP / missing `engine_scene` / uninitialized client.
+
+Quest listener: wire `Notify Quest Complete|Failed|Not Started Yet` from the Flow driver, or bind `OnQuestComplete` / `OnQuestFailed` / `OnQuestNotStartedYet`.
+
 ### Legacy Colyseus notes (compat)
 
 - Room name fall back: map / catalog `colyseus_room`

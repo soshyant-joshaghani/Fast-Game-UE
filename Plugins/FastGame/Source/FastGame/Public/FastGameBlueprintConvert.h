@@ -22,6 +22,7 @@ namespace FastGameBlueprintConvert
 	FFastGameBPPreparedSession ToBP(const FFastGamePreparedSession& In);
 	FFastGameBPUser ToBP(const FFastGameUser& In);
 	FFastGameBPAdvertisement ToBP(const FFastGameAdvertisement& In);
+	FFastGameBPSeatMint ToBP(const FFastGameSeatMint& In);
 
 	FFastGameShopLine FromBP(const FFastGameBPShopLine& In);
 
@@ -32,6 +33,7 @@ namespace FastGameBlueprintConvert
 
 	FString StorePlatformToId(EFastGameStorePlatform Platform);
 	EFastGameStorePlatform StorePlatformFromId(const FString& Provider);
+	FString ProjectStageToWire(EFastGameProjectStage Stage);
 
 	EFastGameShopProgress ClassifyShopProgress(bool bOwned, bool bPending, bool bOk, const FString& Message);
 }

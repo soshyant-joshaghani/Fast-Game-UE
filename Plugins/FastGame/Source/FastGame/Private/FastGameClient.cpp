@@ -1,5 +1,6 @@
 #include "FastGameClient.h"
 #include "FastGame.h"
+#include "FastGameBlueprintConvert.h"
 #include "FastGameNativeStore.h"
 #include "FastGameStoreVerify.h"
 #include "Serialization/JsonReader.h"
@@ -477,6 +478,72 @@ FFastGameClient::FFastGameClient(FFastGameConfig InConfig)
 	{
 		Shop->BindStoreLock();
 	}
+}
+
+bool FFastGameClient::RegisterClientBuild(FString& OutError)
+{
+	OutError.Empty();
+	const FString Token = Config.ClientAccessToken.TrimStartAndEnd();
+	if (Token.IsEmpty())
+	{
+		OutError = TEXT("Client access token is required");
+		return false;
+	}
+	const FString GameCode = Config.GameCode.TrimStartAndEnd();
+	if (GameCode.IsEmpty())
+	{
+		OutError = TEXT("GameCode is required — call Initialize Game first");
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("game_code"), GameCode);
+	Body->SetStringField(
+		TEXT("project_stage"),
+		FastGameBlueprintConvert::ProjectStageToWire(Config.ProjectStage));
+	Body->SetStringField(TEXT("access_token"), Token);
+	if (!Config.ClientInstanceId.IsEmpty())
+	{
+		Body->SetStringField(TEXT("client_instance_id"), Config.ClientInstanceId);
+	}
+
+	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
+	bool bOk = false;
+	int32 StatusCode = 0;
+	FString RespBody;
+	FString ErrMsg;
+
+	Http->PostJson(
+		TEXT("/apps/games/client/initialize"),
+		FastGameJsonUtil::Stringify(Body),
+		[&](bool bSuccess, int32 Code, const FString& BodyText, const FString& Err)
+		{
+			bOk = bSuccess;
+			StatusCode = Code;
+			RespBody = BodyText;
+			ErrMsg = Err;
+			Done->Trigger();
+		});
+	Done->Wait(30000);
+	FPlatformProcess::ReturnSynchEventToPool(Done);
+
+	if (!bOk)
+	{
+		OutError = ErrMsg.IsEmpty()
+			? FString::Printf(TEXT("Client initialize failed (%d): %s"), StatusCode, *RespBody)
+			: ErrMsg;
+		return false;
+	}
+
+	if (const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(RespBody))
+	{
+		FString InstanceId;
+		if (Obj->TryGetStringField(TEXT("client_instance_id"), InstanceId) && !InstanceId.IsEmpty())
+		{
+			Config.ClientInstanceId = InstanceId;
+		}
+	}
+	return true;
 }
 
 void FFastGameAuth::SetAccessToken(const FString& Token)

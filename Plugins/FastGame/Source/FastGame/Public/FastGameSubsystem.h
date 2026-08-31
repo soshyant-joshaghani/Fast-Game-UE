@@ -37,11 +37,13 @@ public:
 
 	/**
 	 * Network / reconnect only (1x or Nx). ApiBaseUrl, HTTP client, restore token.
-	 * Does not wipe Enter identity. Does not check store install — call Initialize Game for that.
+	 * Registers project stage + client access token with the server.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Initialize Client"))
+	UFUNCTION(BlueprintCallable, Category = "FastGame", meta = (DisplayName = "Initialize Client", CPP_Default_ProjectStage = "Dev", CPP_Default_ClientAccessToken = "fg-dev-game"))
 	void InitializeClient(
 		const FString& ApiBaseUrl,
+		EFastGameProjectStage ProjectStage,
+		const FString& ClientAccessToken,
 		bool& bSuccess,
 		FString& Message);
 
@@ -365,6 +367,17 @@ public:
 	void GetMapConfig(
 		const FString& GameCode,
 		const FString& MapId,
+		FLatentActionInfo LatentInfo,
+		bool& bSuccess,
+		int32& StatusCode,
+		FString& Message,
+		FString& JsonBody);
+
+	/** Progressive GetCharacter — tip character payload (404 if unpublished). */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Content", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Get Character"))
+	void GetCharacter(
+		const FString& GameCode,
+		const FString& CharacterId,
 		FLatentActionInfo LatentInfo,
 		bool& bSuccess,
 		int32& StatusCode,
@@ -902,6 +915,9 @@ public:
 	FOnFastGameJsonResult OnGetMapConfigComplete;
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
+	FOnFastGameCharacterConfigFetched OnGetCharacterComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
 	FOnFastGameListCharacters OnListCharactersComplete;
 
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Content")
@@ -972,6 +988,8 @@ private:
 	FString StorePublicKey;
 	FString PersistedGameCode;
 	FString PersistedStorePlatformId;
+	EFastGameProjectStage PersistedProjectStage = EFastGameProjectStage::Dev;
+	FString PersistedClientAccessToken = TEXT("fg-dev-game");
 	/** Bumped on InitializeClient / Deinitialize so orphaned HTTP callbacks are ignored. */
 	int32 ClientGeneration = 0;
 	/** Store SKUs already queried this session (Access must not reopen Cafe Bazaar every tick). */

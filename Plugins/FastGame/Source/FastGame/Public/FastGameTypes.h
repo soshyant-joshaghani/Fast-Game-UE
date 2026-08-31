@@ -21,6 +21,12 @@ struct FASTGAME_API FFastGameConfig
 	FString StorePlatform;
 	/** Myket / Cafe Bazaar RSA public key (not Fast Game api_secret). Fetched from Editor after login; optional local override. */
 	FString StorePublicKey;
+	/** Dev / Production / EarlyAccess — must match ClientAccessToken on Initialize Client. */
+	EFastGameProjectStage ProjectStage = EFastGameProjectStage::Dev;
+	/** Single build access token for the selected project stage. */
+	FString ClientAccessToken;
+	/** Assigned by POST /apps/games/client/initialize. */
+	FString ClientInstanceId;
 	FString PendingPaymentSaveSlot = TEXT("FastGameShopPending");
 	/** Saved under ProjectSaved/FastGame/. Empty string disables persistence. */
 	FString AccessTokenSaveSlot = TEXT("FastGameAccessToken");

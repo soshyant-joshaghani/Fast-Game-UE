@@ -388,4 +388,7 @@ public:
 	TSharedRef<FFastGameProgress> Progress;
 	TSharedRef<FFastGameShop> Shop;
 	TSharedRef<FFastGameAds> Ads;
+
+	/** POST /apps/games/client/initialize — project stage + access token registration. */
+	bool RegisterClientBuild(FString& OutError);
 };
