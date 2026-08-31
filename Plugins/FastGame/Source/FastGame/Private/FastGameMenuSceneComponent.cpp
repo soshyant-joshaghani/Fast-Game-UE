@@ -3,9 +3,11 @@
 
 void UFastGameMenuSceneComponent::OpenLevel(FName LevelScene)
 {
-	const FName Target = LevelScene.IsNone() ? DefaultLevelScene : LevelScene;
-	if (!Target.IsNone())
+	if (LevelScene.IsNone())
 	{
-		UGameplayStatics::OpenLevel(this, Target);
+		UE_LOG(LogTemp, Warning, TEXT("[FastGame Menu] Cannot open level: engine_scene is not configured."));
+		return;
 	}
+
+	UGameplayStatics::OpenLevel(this, LevelScene);
 }

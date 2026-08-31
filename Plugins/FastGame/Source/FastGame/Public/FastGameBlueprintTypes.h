@@ -74,6 +74,9 @@ struct FASTGAME_API FFastGameBPMap
 	FString Label;
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString EngineScene;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	TArray<FString> SupportedModes;
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")

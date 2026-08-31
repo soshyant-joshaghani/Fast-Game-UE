@@ -160,6 +160,7 @@ namespace FastGameJsonUtil
 				M->TryGetStringField(TEXT("id"), Map.Id);
 				M->TryGetStringField(TEXT("map_id"), Map.MapId);
 				M->TryGetStringField(TEXT("label"), Map.Label);
+				M->TryGetStringField(TEXT("engine_scene"), Map.EngineScene);
 				M->TryGetBoolField(TEXT("purchasable"), Map.bPurchasable);
 				double Price = 0;
 				M->TryGetNumberField(TEXT("price"), Price);

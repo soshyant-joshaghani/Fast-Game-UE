@@ -16,9 +16,6 @@ class FASTGAME_API UFastGameMenuSceneComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Menu")
-	FName DefaultLevelScene = FName(TEXT("MAP_LEVEL_SAMPLE"));
-
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Menu")
 	FOnFastGameMenuPageChanged OnShowMenu;
 

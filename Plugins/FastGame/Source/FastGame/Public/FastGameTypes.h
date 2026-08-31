@@ -65,6 +65,8 @@ struct FASTGAME_API FFastGameMap
 	FString Id;
 	FString MapId;
 	FString Label;
+	/** Unity / UE Build Settings scene NAME for this map. */
+	FString EngineScene;
 	TArray<FString> SupportedModes;
 	bool bPurchasable = false;
 	int32 Price = 0;

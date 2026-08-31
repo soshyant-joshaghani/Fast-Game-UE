@@ -60,6 +60,7 @@ namespace FastGameBlueprintConvert
 		Out.Id = In.Id;
 		Out.MapId = In.MapId;
 		Out.Label = In.Label;
+		Out.EngineScene = In.EngineScene;
 		Out.SupportedModes = In.SupportedModes;
 		Out.bPurchasable = In.bPurchasable;
 		Out.Price = In.Price;
