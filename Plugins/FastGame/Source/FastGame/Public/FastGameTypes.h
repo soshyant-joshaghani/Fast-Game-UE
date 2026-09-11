@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
 #include "FastGame.h"
+#include "FastGameBlueprintTypes.h"
 
 struct FASTGAME_API FFastGameConfig
 {
