@@ -1,6 +1,8 @@
 # Fast Game UE
 
-Standalone **Unreal Engine 5.6.1** project for the official Fast Game client SDK.
+Standalone **Unreal Engine 5.6.1** project — **reference** Fast Game client kit.
+
+**Role:** art + thin runtime interpreter. Designers attach FastGame components to Blueprints, keep animator/material parameter **names** synced with tip **bindings**, and author levels. Gameplay (spawn, camera, abilities, vehicles, zones, input) is configured in [`fast-game`](../fast-game/README.md) and consumed from published tip. UE is the **policy source**; Unity matches it.
 
 | Item | Path |
 |------|------|
@@ -11,7 +13,8 @@ Standalone **Unreal Engine 5.6.1** project for the official Fast Game client SDK
 | SDK docs | [SDK.md](SDK.md) |
 | Project guide | [docs/PROJECT.md](docs/PROJECT.md) |
 | Contract | [CONTRACT.md](CONTRACT.md) |
-| Backend kit | [`../fast-game/`](../fast-game/Readme.md) |
+| Backend kit | [`../fast-game/`](../fast-game/README.md) |
+| Plans | [`../fast-game/__plans__/`](../fast-game/__plans__/) |
 
 ## Open
 
