@@ -16,12 +16,17 @@ class FASTGAME_API UFastGameCharacterComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:
-	/** Locale-free catalog NAME (e.g. PLAYER_SAMPLE). */
+	/** Locale-free catalog NAME (e.g. PLAYER_SAMPLE). Alias: entity_id. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Character")
 	FName CharacterId;
 
+	/** Entity kind from tip (character | vehicle | …). Default character. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Character")
+	FName EntityKind = TEXT("character");
+
 	UPROPERTY(BlueprintAssignable, Category = "FastGame|Character")
 	FOnFastGameCharacterConfigFetched OnCharacterFetched;
+
 
 	/** Empty GameCode → Initialize Game GameCode. */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Character", meta = (Latent, LatentInfo = "LatentInfo", DisplayName = "Fetch Character", CPP_Default_GameCode = ""))

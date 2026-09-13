@@ -1644,6 +1644,40 @@ void FFastGameContent::GetCharacter(const FString& GameCode, const FString& Char
 		});
 }
 
+void FFastGameContent::GetEntity(const FString& GameCode, const FString& EntityId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/entities/") +
+			FastGameJsonUtil::Escape(EntityId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
+void FFastGameContent::GetLootTable(const FString& GameCode, const FString& LootTableId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	Http->Get(
+		TEXT("/apps/games/tip/") + FastGameJsonUtil::Escape(GameCode) + TEXT("/loot/") +
+			FastGameJsonUtil::Escape(LootTableId),
+		[OnDone](bool bOk, int32, FString Body, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Body), TEXT(""));
+		});
+}
+
 void FFastGameContent::GetDialogue(const FString& GameCode, const FString& DialogueId,
 	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
 {
@@ -1860,6 +1894,30 @@ void FFastGameContent::ClaimPickup(const FString& GameId, const FString& MapId, 
 	if (!PlacementId.IsEmpty()) Body->SetStringField(TEXT("placement_id"), PlacementId);
 	Http->PostJson(
 		TEXT("/apps/games/content/") + FastGameJsonUtil::Escape(GameId) + TEXT("/players/me/pickup-claim"),
+		FastGameJsonUtil::Stringify(Body),
+		[OnDone](bool bOk, int32, FString Resp, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, nullptr, Err);
+				return;
+			}
+			if (OnDone) OnDone(true, FastGameJsonUtil::ParseObject(Resp), TEXT(""));
+		});
+}
+
+void FFastGameContent::OpenLoot(const FString& GameId, const FString& MapId, const FString& ModeId,
+	const FString& PickupId, const FString& PlacementId, const FString& LootTableId,
+	TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone)
+{
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	if (!MapId.IsEmpty()) Body->SetStringField(TEXT("map_id"), MapId);
+	if (!ModeId.IsEmpty()) Body->SetStringField(TEXT("mode_id"), ModeId);
+	if (!PickupId.IsEmpty()) Body->SetStringField(TEXT("pickup_id"), PickupId);
+	if (!PlacementId.IsEmpty()) Body->SetStringField(TEXT("placement_id"), PlacementId);
+	if (!LootTableId.IsEmpty()) Body->SetStringField(TEXT("loot_table_id"), LootTableId);
+	Http->PostJson(
+		TEXT("/apps/games/content/") + FastGameJsonUtil::Escape(GameId) + TEXT("/players/me/loot-open"),
 		FastGameJsonUtil::Stringify(Body),
 		[OnDone](bool bOk, int32, FString Resp, FString Err)
 		{

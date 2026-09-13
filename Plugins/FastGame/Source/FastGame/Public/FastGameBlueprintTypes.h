@@ -631,6 +631,72 @@ struct FASTGAME_API FFastGameBPSeatMint
 	FString ModeId;
 };
 
+// --- Gameplay runtime (G1) ---
+
+UENUM(BlueprintType)
+enum class EFastGameParamChannel : uint8
+{
+	Animator UMETA(DisplayName = "Animator"),
+	Material UMETA(DisplayName = "Material"),
+	Component UMETA(DisplayName = "Component"),
+	FlowVar UMETA(DisplayName = "Flow Var"),
+};
+
+UENUM(BlueprintType)
+enum class EFastGameParamValueType : uint8
+{
+	Bool UMETA(DisplayName = "Bool"),
+	Int UMETA(DisplayName = "Int"),
+	Float UMETA(DisplayName = "Float"),
+	String UMETA(DisplayName = "String"),
+	Trigger UMETA(DisplayName = "Trigger"),
+};
+
+USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPParamWrite
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	FName Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	EFastGameParamChannel Channel = EFastGameParamChannel::Animator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	EFastGameParamValueType Type = EFastGameParamValueType::Float;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	float FloatValue = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	bool bBoolValue = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	int32 IntValue = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	FString StringValue;
+};
+
+USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPAbilityDef
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	FName AbilityId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	TArray<FFastGameBPParamWrite> OnActivate;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	TArray<FFastGameBPParamWrite> OnDeactivate;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame")
+	bool bToggle = false;
+};
+
 // --- Dynamic multicast delegates (async Blueprint events) ---
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameLoginComplete, bool, bSuccess, int32, StatusCode, const FString&, Message);
@@ -656,3 +722,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnFastGameUnlockSku, bool, bSucce
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGameShopProgress, EFastGameShopProgress, Progress, bool, bOwned, const FString&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnFastGamePaymentVerify, bool, bSuccess, bool, bPaymentSuccess, const FString&, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnFastGameAdvertisement, bool, bSuccess, bool, bHasAd, const FFastGameBPAdvertisement&, Ad, const FString&, Error);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnFastGameParamWritten, FName, ParamName, EFastGameParamChannel, Channel);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFastGameAbilityPin, FName, AbilityId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFastGameDirectorMessage, const FString&, Message);

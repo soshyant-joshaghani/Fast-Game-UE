@@ -18,7 +18,8 @@ public class FastGame : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"Projects"
+			"Projects",
+			"InputCore"
 		});
 
 		// Multiplayer: Realtime.JoinMap (seat mint) + sibling Colyseus with seat_token.

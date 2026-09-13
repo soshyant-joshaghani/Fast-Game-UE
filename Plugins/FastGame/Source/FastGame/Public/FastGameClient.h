@@ -236,6 +236,12 @@ public:
 	/** Progressive GetCharacter (A3). */
 	void GetCharacter(const FString& GameCode, const FString& CharacterId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Progressive GetEntity — character or pickup/chest (G2). */
+	void GetEntity(const FString& GameCode, const FString& EntityId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Progressive GetLootTable (G2). */
+	void GetLootTable(const FString& GameCode, const FString& LootTableId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 	/** Progressive GetDialogue — 404 until panel craft (A8). */
 	void GetDialogue(const FString& GameCode, const FString& DialogueId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
@@ -267,6 +273,10 @@ public:
 		const TMap<FString, FString>& Cosmetics, const TMap<FString, FString>& ModularParts,
 		TFunction<void(bool, FFastGameLoadout, FString)> OnDone);
 	void ClaimPickup(const FString& GameId, const FString& MapId, const FString& PickupId, const FString& PlacementId,
+		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
+	/** Validated loot open — server rolls; forged grants rejected (G2). */
+	void OpenLoot(const FString& GameId, const FString& MapId, const FString& ModeId,
+		const FString& PickupId, const FString& PlacementId, const FString& LootTableId,
 		TFunction<void(bool, TSharedPtr<FJsonObject>, FString)> OnDone);
 	void PrepareSession(const FString& GameId, const FString& ModeId, const FString& MapId,
 		TFunction<void(bool, FFastGamePreparedSession, FString)> OnDone,

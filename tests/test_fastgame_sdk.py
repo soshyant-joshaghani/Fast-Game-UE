@@ -204,6 +204,10 @@ def test_ue_tip_facade_content_methods():
     assert "void GetGameConfig" in header
     assert "void GetMapConfig" in header
     assert "void GetCharacter" in header
+    assert "void GetEntity" in header
+    assert "void GetLootTable" in header
+    assert "void OpenLoot" in header
+    assert "void ClaimPickup" in header
     assert "void GetDialogue" in header
     assert "void GetQuiz" in header
     assert "void GetStrings" in header
@@ -211,6 +215,12 @@ def test_ue_tip_facade_content_methods():
     assert "void FFastGameContent::GetGameConfig" in cpp
     assert "void FFastGameContent::GetMapConfig" in cpp
     assert "void FFastGameContent::GetCharacter" in cpp
+    assert "void FFastGameContent::GetEntity" in cpp
+    assert "void FFastGameContent::GetLootTable" in cpp
+    assert "void FFastGameContent::OpenLoot" in cpp
+    assert "/loot/" in cpp
+    assert "/entities/" in cpp
+    assert "loot-open" in cpp
     assert "void FFastGameContent::GetDialogue" in cpp
     assert "void FFastGameContent::GetQuiz" in cpp
     assert "void FFastGameContent::GetStrings" in cpp
@@ -404,3 +414,8 @@ def test_ue_entity_components_and_flow_pins():
     assert "Travel Map" in contract
     assert "sdk-pin-policy.md" in contract
     assert "Not Started Yet" in contract
+    assert (
+        UE / "Source/FastGame/Public/FastGameLootRuntimeComponent.h"
+    ).is_file()
+    assert "LootRuntime" in contract
+    assert "GetLootTable" in contract
