@@ -35,8 +35,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Ability", meta = (DisplayName = "Deactivate Ability"))
 	void DeactivateAbility(FName AbilityId);
 
-	UFUNCTION(BlueprintPure, Category = "FastGame|Ability", meta = (DisplayName = "Is Ability Active"))
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ability", meta = (DisplayName = "Is Ability Active"))
 	bool IsAbilityActive(FName AbilityId) const;
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Ability", meta = (DisplayName = "Load Abilities From Tip Json"))
+	void LoadAbilitiesFromTipJson(const FString& JsonBody);
 
 protected:
 	virtual void BeginPlay() override;

@@ -61,7 +61,7 @@ Base: `{ApiBaseUrl}` default `http://api.localhost/api/v1`
 | Progress | GET | `/apps/games/progress/{game_code}?map_id=` — official progress |
 | Progress event | POST | `/apps/games/progress/{game_code}/events` — validated events only (reject client score/win) |
 | Realtime seat | POST | `/apps/games/realtime/seat` — body `{ game_code, map_id, mode_id? }` → `seat_token`, `expires_at`, `game_server_url`, `room_name`, `game_id`, `map_id`, `mode_id` (JoinMap mint; prefer over GetGameServer) |
-| Characters | GET | `/apps/games/content/{game}/characters?role=player\|npc` — **deprecated for players** (prefer tip GetGameConfig) |
+| Characters | GET | `/apps/games/content/{game}/characters` — **deprecated for players** (prefer tip GetEntity / GetGameConfig); `?role=` ignored (V0) |
 | Cosmetics | GET | `/apps/games/content/{game}/characters/{character_id}/cosmetics` |
 | Abilities | GET | `/apps/games/content/{game}/characters/{character_id}/abilities` |
 | Map runtime | GET | `/apps/games/content/{game}/maps/{map_id}/runtime` — **deprecated for players** (prefer tip GetMapConfig) |
@@ -124,18 +124,21 @@ Slim **Blueprint-spawnable components** bind locale-free catalog **NAME**s on pr
 | **FastGameTitleComponent** | `TitleId` | bind only |
 | **FastGameAchievementComponent** | `AchievementId` | bind only |
 
-### GameplayDirector (G1) + LootRuntime (G2)
+### GameplayDirector (G1→V2) + LootRuntime (G2)
 
 Single LEVEL façade — **FastGameGameplayDirectorComponent**. Modules:
 
 | Module | Role |
 |--------|------|
-| **GameplayDirector** | `Boot Gameplay` → GetMapConfig; apply `camera_profile` / `input_profile_id`; façade SetAnimator / Activate Ability |
+| **GameplayDirector** | `Boot Gameplay` → GetMapConfig; apply `camera_profile` / `input_profile_id`; façade SetAnimator / Activate Ability; boots **Flow Runtime** |
+| **Flow Runtime** | Walks `flow_runtime` (V3): play_dialogue, load_level, branch, unlock_achievements; Notify Trigger Enter; Fellow gate |
+| **Character Controller** | Move / jump N / crouch / sprint; tip locomotion + Speed animator bind (V2). Legacy: Movement Runtime |
+| **Camera Controller** | `camera_profile` tps \| fps \| top_down \| side (aliases: tps_follow). Legacy: Camera Runtime |
 | **ParamRuntime** | SetAnimator / SetMaterial (declared param NAMEs) |
-| **AbilityRuntime** | Activate Ability → param writes |
-| **MovementRuntime** | `movement_profile` humanoid (+ vehicle_* reserved G4) |
-| **CameraRuntime** | `camera_profile` tps_follow / top_down / fps / fixed |
+| **AbilityRuntime** | Activate Ability → tip `on_activate` / `on_deactivate`; Load Abilities From Tip Json |
 | **LootRuntime** | Get Loot Table + Open Loot (server roll; forged grants rejected) |
+
+Character tip (Get Character) lifts `movement_profile`, `camera_profile`, `cameras[]`, jump/walk fields from `stats` plus ability binds.
 
 **Exec pin policy:** Auth-style named exec pins — no redundant `bSuccess` on scenario nodes. Canonical pin **DisplayNames** and Flow/LEVEL rules: [fast-game/docs/sdk-pin-policy.md](../fast-game/docs/sdk-pin-policy.md).
 
@@ -160,7 +163,7 @@ Quest listener: wire `Notify Quest Complete|Failed|Not Started Yet` from the Flo
 ## DTO notes
 
 - Ads: request uses extensible `capabilities` (e.g. `mediaTypes`); response is provider-opaque (`id`, `campaign_id`, `media`, `click`, `tracking`, `meta`) — never includes provider key. Empty fill is HTTP **204**. Media types: `image` | `gif` | `video` | `lottie` | `rive` | `text`. Text ads put `title` / `body` / `background_url` / `background_color` in `meta` (and UE Blueprint pins). **`media.url` / `meta.background_url` are absolute public CDN URLs** from the game’s storage targets (platform MinIO and/or Arvan / Liara / custom) — clients load them directly; no relative path rewriting. Client request pins `slot` / `locale` / `country` / `platform` / `engine` / `tags` are matched against campaign `targeting_rules` (lists; omit or empty = any). Configure those lists in the panel campaign editor — do not remove the SDK pins. UE: `Get Image Ad` / `Get Video Ad` / `Get Rive Ad` / `Get Text Ad` / … return typed `FFastGameBPAdvertisement` + URL pins; `Track Ad Displayed|Clicked|Closed`. Events: `AdvertisementDisplayed` | `AdvertisementClicked` | `AdvertisementClosed` (server also records `AdvertisementRequested` on `/request`).
-- Characters have `role`: `player` | `npc` | `both` (old standalone NPC library removed); `body_kind` `modular` | `skins` | `simple` for customization mode; optional stats (`{}` when unused)
+- Characters: **one type** — no product `role` (field deprecated, tip omits possession-from-role). Seed reference: `modular-chr`, `cena`, `sayna`. `body_kind` `modular` | `skins` | `simple`; optional stats (`{}` when unused)
 - Catalog modes: taxonomy ids toggled as booleans in the editor (rows in `game_mode`)
 - Catalog `payment_providers`: booleans for `zarinpal` | `steam` | `googleplay` | `myket` | `caffebazar` | `stripe` | `paypal`
 - Catalog `payment_config`: per-game credentials (editor). Secrets redacted on client catalog (`*_configured` flags). Shape includes `zarinpal` (`merchant_id`, `sandbox`), `myket` / `caffebazar` / `googleplay` (tokens/secrets + `package_name`), `steam` (`app_id`, keys, `realm`, `return_url`), plus optional `stripe` / `paypal` fields. No provider secrets in process env. **Cafe Bazaar / Myket RSA** is a public verify key: set it in Editor; clients fetch `GET …/catalog/{game}/store-verify-key` (FG1 wrap). Never put Pishkhan JWT / `api_secret` in the APK or Unreal.
@@ -223,20 +226,14 @@ Auth: UE **Is Authenticated** / **Check Authentication** (`bAuthenticated`); Uni
 
 Unity / Unreal must **parse** open `translations` maps when `expand_i18n` is set, otherwise use resolved `label`. Must **not** invent a second locale map or POST translations. Panel **editor** uses `LocaleFields` + `shared/locales.ts` to write locales.
 Panel routes use **NAME** (`game_id`), never display labels.
-## Breaking change — NPCs removed
+## Breaking change — one Character + possess (V0)
 
-The standalone NPC entity is gone: no `game_npc` table, no `/npcs` routes, no `map_npc_placement`.
+Standalone NPC library was already removed. **V0** also removes player/npc/hybrid **role** as a product concept:
 
-- Author NPCs as a `GameCharacter` with `role: "npc"` (or `"both"`); list them with
-  `?role=npc`.
-- Place them via `character-placements` (keyed by `character_id`, optional `kind`:
-  `player` | `npc`) instead of `npc-placements`. Prefer placements over raw `MapPlayerSpawn`
-  for authored spawn points (`kind: "player"` + `mode_id` + `team`).
-- Map runtime returns `character_placements[]` in place of `npcs[]`; each entry carries
-  `placement_id`, `character_id`, `kind`, `role`, `label`, `stats`, `overrides`, `mode_id`,
-  `team`, optional `transform`. Grouped views: `character_placements_by_mode`,
-  `pickups_by_mode`. The old `disposition` field is gone — express hostility via `stats` /
-  `overrides`.
+- Catalog Characters are just Characters (`modular-chr`, `cena`, `sayna` in seed `game`).
+- Placement chooses **`possess`**: `ctrlr` (input) or `brain` (AI). Tip emits `possess` + `kind` (same value). Legacy `player`/`npc` kinds normalize to `ctrlr`/`brain`.
+- Map runtime `character_placements[]` entries: `placement_id`, `character_id`, `kind`/`possess`, `label`, `stats`, `overrides`, `mode_id`, `team`, optional `transform` — **no `role`**.
+- `?role=` on list characters is ignored.
 
 ## Verification rule
 

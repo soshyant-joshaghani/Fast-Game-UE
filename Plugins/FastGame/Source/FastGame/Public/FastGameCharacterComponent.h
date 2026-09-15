@@ -40,4 +40,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FastGame|Character", meta = (DisplayName = "Get Character Id"))
 	FName GetCharacterId() const { return CharacterId; }
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Character", meta = (DisplayName = "Apply Entity Tip Json"))
+	void ApplyEntityTipJson(const FString& JsonBody);
 };

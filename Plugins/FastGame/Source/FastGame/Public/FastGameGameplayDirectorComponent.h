@@ -7,15 +7,18 @@
 #include "FastGameGameplayDirectorComponent.generated.h"
 
 class UFastGameMapComponent;
+class UFastGameCameraControllerComponent;
+class UFastGameCharacterControllerComponent;
 class UFastGameCameraRuntimeComponent;
 class UFastGameMovementRuntimeComponent;
 class UFastGameAbilityRuntimeComponent;
 class UFastGameParamRuntimeComponent;
 class UFastGameLootRuntimeComponent;
 class UFastGameCharacterComponent;
+class UFastGameFlowRuntimeComponent;
 
 /**
- * Single LEVEL façade (G1). Boots tip map profiles; owns runtime modules.
+ * Single LEVEL façade. Boots tip map profiles; owns V2 Character/Camera controllers.
  */
 UCLASS(ClassGroup = (FastGame), meta = (BlueprintSpawnableComponent))
 class FASTGAME_API UFastGameGameplayDirectorComponent : public UActorComponent
@@ -25,6 +28,12 @@ class FASTGAME_API UFastGameGameplayDirectorComponent : public UActorComponent
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
 	TObjectPtr<UFastGameMapComponent> Map;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
+	TObjectPtr<UFastGameCameraControllerComponent> CameraController;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
+	TObjectPtr<UFastGameCharacterControllerComponent> CharacterController;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
 	TObjectPtr<UFastGameCameraRuntimeComponent> CameraRuntime;
@@ -40,6 +49,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
 	TObjectPtr<UFastGameLootRuntimeComponent> LootRuntime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
+	TObjectPtr<UFastGameFlowRuntimeComponent> FlowRuntime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FastGame|Director")
 	TObjectPtr<UFastGameCharacterComponent> PlayerEntity;
@@ -88,6 +100,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Director", meta = (DisplayName = "Set Material Scalar"))
 	void SetMaterialScalar(FName ParamName, float Value);
+
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Director", meta = (DisplayName = "Notify Trigger Enter"))
+	void NotifyTriggerEnter(FName TriggerId);
 
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Director", meta = (DisplayName = "Apply Map Config Json"))
 	void ApplyMapConfigJson(const FString& JsonBody);

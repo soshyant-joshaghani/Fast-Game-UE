@@ -3,6 +3,7 @@
 #include "Components/MeshComponent.h"
 #include "Animation/AnimInstance.h"
 #include "GameFramework/Actor.h"
+#include "UObject/UnrealType.h"
 
 void UFastGameParamRuntimeComponent::BeginPlay()
 {
@@ -66,6 +67,59 @@ bool UFastGameParamRuntimeComponent::SetMaterialScalar(FName ParamName, float Va
 	return ApplyWrite(W);
 }
 
+namespace FastGameParamRuntimeUtil
+{
+	static bool WriteAnimInstanceProperty(UAnimInstance* Anim, const FFastGameBPParamWrite& Write)
+	{
+		if (!Anim || Write.Name.IsNone())
+		{
+			return false;
+		}
+		// UE 5.6+: AnimBP variables are UObject properties (SetFloat/SetBool removed from UAnimInstance).
+		FProperty* Prop = Anim->GetClass()->FindPropertyByName(Write.Name);
+		if (!Prop)
+		{
+			return false;
+		}
+		void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Anim);
+		switch (Write.Type)
+		{
+		case EFastGameParamValueType::Bool:
+		case EFastGameParamValueType::Trigger:
+			if (FBoolProperty* BoolProp = CastField<FBoolProperty>(Prop))
+			{
+				BoolProp->SetPropertyValue(
+					ValuePtr,
+					Write.Type == EFastGameParamValueType::Trigger ? true : Write.bBoolValue);
+				return true;
+			}
+			break;
+		case EFastGameParamValueType::Int:
+			if (FIntProperty* IntProp = CastField<FIntProperty>(Prop))
+			{
+				IntProp->SetPropertyValue(ValuePtr, Write.IntValue);
+				return true;
+			}
+			break;
+		case EFastGameParamValueType::Float:
+			if (FFloatProperty* FloatProp = CastField<FFloatProperty>(Prop))
+			{
+				FloatProp->SetPropertyValue(ValuePtr, Write.FloatValue);
+				return true;
+			}
+			if (FDoubleProperty* DoubleProp = CastField<FDoubleProperty>(Prop))
+			{
+				DoubleProp->SetPropertyValue(ValuePtr, static_cast<double>(Write.FloatValue));
+				return true;
+			}
+			break;
+		default:
+			break;
+		}
+		return false;
+	}
+}
+
 bool UFastGameParamRuntimeComponent::ApplyWrite(const FFastGameBPParamWrite& Write)
 {
 	ResolveTargets();
@@ -88,22 +142,10 @@ bool UFastGameParamRuntimeComponent::ApplyWrite(const FFastGameBPParamWrite& Wri
 			OnParamFailed.Broadcast(TEXT("no AnimInstance"));
 			return false;
 		}
-		switch (Write.Type)
+		if (!FastGameParamRuntimeUtil::WriteAnimInstanceProperty(Anim, Write))
 		{
-		case EFastGameParamValueType::Bool:
-			Anim->SetBool(Write.Name, Write.bBoolValue);
-			break;
-		case EFastGameParamValueType::Int:
-			Anim->SetInteger(Write.Name, Write.IntValue);
-			break;
-		case EFastGameParamValueType::Float:
-			Anim->SetFloat(Write.Name, Write.FloatValue);
-			break;
-		case EFastGameParamValueType::Trigger:
-			Anim->SetTrigger(Write.Name);
-			break;
-		default:
-			OnParamFailed.Broadcast(TEXT("unsupported animator type"));
+			OnParamFailed.Broadcast(
+				FString::Printf(TEXT("AnimBP has no writable property '%s'"), *Write.Name.ToString()));
 			return false;
 		}
 		OnParamWritten.Broadcast(Write.Name, EFastGameParamChannel::Animator);

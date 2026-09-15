@@ -1,5 +1,8 @@
 #include "FastGameDialoguePlayerComponent.h"
 #include "FastGameSubsystem.h"
+#include "FastGameClient.h"
+#include "Engine/GameInstance.h"
+#include "Async/Async.h"
 
 void UFastGameDialoguePlayerComponent::PlayDialogue(
 	FName InDialogueId,
@@ -15,14 +18,42 @@ void UFastGameDialoguePlayerComponent::PlayDialogue(
 		OnFailed.Broadcast(TEXT(""), Message);
 		return;
 	}
-	UFastGameSubsystem* Sub = GetWorld() ? GetWorld()->GetGameInstance()->GetSubsystem<UFastGameSubsystem>() : nullptr;
-	if (!Sub || !Sub->IsInitialized())
+	UWorld* World = GetWorld();
+	UGameInstance* GI = World ? World->GetGameInstance() : nullptr;
+	UFastGameSubsystem* Sub = GI ? GI->GetSubsystem<UFastGameSubsystem>() : nullptr;
+	if (!Sub || !Sub->IsInitialized() || !Sub->GetClient().IsValid())
 	{
 		Message = TEXT("FastGame not initialized");
 		OnFailed.Broadcast(Id.ToString(), Message);
 		return;
 	}
-	// Progressive fetch wired through subsystem in full B6; stub success for contract smoke.
+
+	const FString GameCode = Sub->GetGameCode();
+	TWeakObjectPtr<UFastGameDialoguePlayerComponent> WeakThis(this);
+	const FString DialogueStr = Id.ToString();
+	Sub->GetClient()->Content->GetDialogue(
+		GameCode,
+		DialogueStr,
+		[WeakThis, DialogueStr](bool bOk, TSharedPtr<FJsonObject> /*Json*/, FString Error)
+		{
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, DialogueStr, bOk, Error]()
+			{
+				if (UFastGameDialoguePlayerComponent* Self = WeakThis.Get())
+				{
+					if (bOk)
+					{
+						// Full choice walk is Blueprint-driven; tip fetch success = playable for V3 Flow.
+						Self->OnSuccess.Broadcast(DialogueStr);
+					}
+					else
+					{
+						Self->OnFailed.Broadcast(DialogueStr, Error);
+					}
+				}
+			});
+		});
+
+	// Latent-less Blueprint pin: Success means request accepted (async fetch continues).
 	Outcome = EFastGameRequestOutcome::Success;
-	OnSuccess.Broadcast(Id.ToString());
+	Message = TEXT("");
 }

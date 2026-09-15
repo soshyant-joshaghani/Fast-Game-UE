@@ -417,5 +417,30 @@ def test_ue_entity_components_and_flow_pins():
     assert (
         UE / "Source/FastGame/Public/FastGameLootRuntimeComponent.h"
     ).is_file()
+    assert (
+        UE / "Source/FastGame/Public/FastGameCharacterControllerComponent.h"
+    ).is_file()
+    assert (
+        UE / "Source/FastGame/Public/FastGameCameraControllerComponent.h"
+    ).is_file()
     assert "LootRuntime" in contract
     assert "GetLootTable" in contract
+    assert "Character Controller" in contract
+    assert "Camera Controller" in contract
+    char_h = _read(UE / "Source/FastGame/Public/FastGameCharacterControllerComponent.h")
+    cam_h = _read(UE / "Source/FastGame/Public/FastGameCameraControllerComponent.h")
+    ab_h = _read(UE / "Source/FastGame/Public/FastGameAbilityRuntimeComponent.h")
+    assert "RequestJump" in char_h
+    assert "SetCrouch" in char_h
+    assert "ApplyLocomotionFromTipJson" in char_h
+    assert "NormalizeCameraProfile" in cam_h
+    assert "LoadAbilitiesFromTipJson" in ab_h
+    director_h = _read(UE / "Source/FastGame/Public/FastGameGameplayDirectorComponent.h")
+    assert (
+        UE / "Source/FastGame/Public/FastGameFlowRuntimeComponent.h"
+    ).is_file()
+    flow_h = _read(UE / "Source/FastGame/Public/FastGameFlowRuntimeComponent.h")
+    assert "NotifyTriggerEnter" in flow_h
+    assert "LoadFromMapTipJson" in flow_h
+    assert "FlowRuntime" in director_h
+    assert "Flow Runtime" in contract

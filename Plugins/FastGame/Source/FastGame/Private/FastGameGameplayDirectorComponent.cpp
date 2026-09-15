@@ -1,11 +1,14 @@
 #include "FastGameGameplayDirectorComponent.h"
 #include "FastGameMapComponent.h"
+#include "FastGameCameraControllerComponent.h"
+#include "FastGameCharacterControllerComponent.h"
 #include "FastGameCameraRuntimeComponent.h"
 #include "FastGameMovementRuntimeComponent.h"
 #include "FastGameAbilityRuntimeComponent.h"
 #include "FastGameParamRuntimeComponent.h"
 #include "FastGameLootRuntimeComponent.h"
 #include "FastGameCharacterComponent.h"
+#include "FastGameFlowRuntimeComponent.h"
 #include "FastGameSubsystem.h"
 #include "FastGameClient.h"
 #include "FastGameBlueprintConvert.h"
@@ -35,6 +38,14 @@ void UFastGameGameplayDirectorComponent::ResolveModules()
 	{
 		Map = Owner->FindComponentByClass<UFastGameMapComponent>();
 	}
+	if (!CameraController)
+	{
+		CameraController = Owner->FindComponentByClass<UFastGameCameraControllerComponent>();
+	}
+	if (!CharacterController)
+	{
+		CharacterController = Owner->FindComponentByClass<UFastGameCharacterControllerComponent>();
+	}
 	if (!CameraRuntime)
 	{
 		CameraRuntime = Owner->FindComponentByClass<UFastGameCameraRuntimeComponent>();
@@ -42,6 +53,14 @@ void UFastGameGameplayDirectorComponent::ResolveModules()
 	if (!MovementRuntime)
 	{
 		MovementRuntime = Owner->FindComponentByClass<UFastGameMovementRuntimeComponent>();
+	}
+	if (!CameraController && CameraRuntime)
+	{
+		CameraController = CameraRuntime;
+	}
+	if (!CharacterController && MovementRuntime)
+	{
+		CharacterController = MovementRuntime;
 	}
 	if (!AbilityRuntime)
 	{
@@ -55,20 +74,33 @@ void UFastGameGameplayDirectorComponent::ResolveModules()
 	{
 		LootRuntime = Owner->FindComponentByClass<UFastGameLootRuntimeComponent>();
 	}
+	if (!FlowRuntime)
+	{
+		FlowRuntime = Owner->FindComponentByClass<UFastGameFlowRuntimeComponent>();
+	}
 	if (!PlayerEntity)
 	{
 		PlayerEntity = Owner->FindComponentByClass<UFastGameCharacterComponent>();
 	}
-	if (CameraRuntime && !CameraRuntime->FollowTarget && PlayerEntity)
+	if (CameraController && !CameraController->FollowTarget && PlayerEntity)
 	{
-		CameraRuntime->SetFollowTarget(PlayerEntity->GetOwner());
+		CameraController->SetFollowTarget(PlayerEntity->GetOwner());
+	}
+	if (FlowRuntime)
+	{
+		FlowRuntime->Director = this;
+		FlowRuntime->Map = Map;
 	}
 }
 
 void UFastGameGameplayDirectorComponent::ApplyCameraProfile(FName Profile)
 {
 	ActiveCameraProfile = Profile;
-	if (CameraRuntime)
+	if (CameraController)
+	{
+		CameraController->ApplyCameraProfile(Profile);
+	}
+	else if (CameraRuntime)
 	{
 		CameraRuntime->ApplyCameraProfile(Profile);
 	}
@@ -77,7 +109,11 @@ void UFastGameGameplayDirectorComponent::ApplyCameraProfile(FName Profile)
 void UFastGameGameplayDirectorComponent::ApplyMovementProfile(FName Profile)
 {
 	ActiveMovementProfile = Profile;
-	if (MovementRuntime)
+	if (CharacterController)
+	{
+		CharacterController->ApplyMovementProfile(Profile);
+	}
+	else if (MovementRuntime)
 	{
 		MovementRuntime->ApplyMovementProfile(Profile);
 	}
@@ -138,6 +174,19 @@ void UFastGameGameplayDirectorComponent::ApplyMapConfigJson(const FString& JsonB
 	if (Payload->TryGetStringField(TEXT("input_profile_id"), InputId) && !InputId.IsEmpty())
 	{
 		ActiveInputProfileId = FName(*InputId);
+	}
+	if (FlowRuntime)
+	{
+		FlowRuntime->LoadFromMapTipJson(JsonBody);
+		FlowRuntime->BootFromLoadedTip();
+	}
+}
+
+void UFastGameGameplayDirectorComponent::NotifyTriggerEnter(FName TriggerId)
+{
+	if (FlowRuntime)
+	{
+		FlowRuntime->NotifyTriggerEnter(TriggerId);
 	}
 }
 

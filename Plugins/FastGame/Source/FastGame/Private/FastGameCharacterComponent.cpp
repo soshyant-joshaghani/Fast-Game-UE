@@ -4,8 +4,15 @@
 #include "FastGameBlueprintConvert.h"
 #include "FastGameHttp.h"
 #include "FastGameLatentActions.h"
+#include "FastGameGameplayDirectorComponent.h"
+#include "FastGameCharacterControllerComponent.h"
+#include "FastGameCameraControllerComponent.h"
+#include "FastGameAbilityRuntimeComponent.h"
 #include "Async/Async.h"
 #include "Engine/GameInstance.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 namespace FastGameCharacterComponentUtil
 {
@@ -141,8 +148,88 @@ void UFastGameCharacterComponent::FetchCharacter(
 				State->bFinished = true;
 				if (UFastGameCharacterComponent* Self = WeakThis.Get())
 				{
+					if (bOk)
+					{
+						Self->ApplyEntityTipJson(Body);
+					}
 					Self->OnCharacterFetched.Broadcast(bOk, Body, Msg);
 				}
 			});
 		});
+}
+
+void UFastGameCharacterComponent::ApplyEntityTipJson(const FString& JsonBody)
+{
+	TSharedPtr<FJsonObject> Root;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonBody);
+	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	{
+		return;
+	}
+	const TSharedPtr<FJsonObject>* PayloadPtr = nullptr;
+	TSharedPtr<FJsonObject> Payload = Root;
+	if (Root->TryGetObjectField(TEXT("payload"), PayloadPtr) && PayloadPtr && PayloadPtr->IsValid())
+	{
+		Payload = *PayloadPtr;
+	}
+	FString Kind;
+	if (Payload->TryGetStringField(TEXT("kind"), Kind) && !Kind.IsEmpty())
+	{
+		EntityKind = FName(*Kind);
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+	UFastGameGameplayDirectorComponent* Director = Owner->FindComponentByClass<UFastGameGameplayDirectorComponent>();
+	UFastGameCharacterControllerComponent* Character =
+		Owner->FindComponentByClass<UFastGameCharacterControllerComponent>();
+	UFastGameCameraControllerComponent* Camera =
+		Director && Director->CameraController
+			? Director->CameraController.Get()
+			: Owner->FindComponentByClass<UFastGameCameraControllerComponent>();
+	UFastGameAbilityRuntimeComponent* Abilities =
+		Owner->FindComponentByClass<UFastGameAbilityRuntimeComponent>();
+
+	if (Character)
+	{
+		Character->ApplyLocomotionFromTipJson(JsonBody);
+	}
+	if (Camera)
+	{
+		Camera->ApplyAllowedCamerasFromTipJson(JsonBody);
+	}
+	if (Abilities)
+	{
+		Abilities->LoadAbilitiesFromTipJson(JsonBody);
+	}
+
+	FString Move;
+	FString Cam;
+	Payload->TryGetStringField(TEXT("movement_profile"), Move);
+	Payload->TryGetStringField(TEXT("camera_profile"), Cam);
+	if (Director)
+	{
+		if (!Move.IsEmpty())
+		{
+			Director->ApplyMovementProfile(FName(*Move));
+		}
+		if (!Cam.IsEmpty())
+		{
+			Director->ApplyCameraProfile(FName(*Cam));
+		}
+	}
+	else
+	{
+		if (Character && !Move.IsEmpty())
+		{
+			Character->ApplyMovementProfile(FName(*Move));
+		}
+		if (Camera && !Cam.IsEmpty())
+		{
+			Camera->ApplyCameraProfile(FName(*Cam));
+		}
+	}
 }
