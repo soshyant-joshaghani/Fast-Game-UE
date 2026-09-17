@@ -373,6 +373,14 @@ struct FASTGAME_API FFastGameBPUser
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	FString FullName;
 
+	/** ISO 3166-1 alpha-2 residence country. Empty when unset. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString ResidenceCountryCode;
+
+	/** ISO 3166-2 residence subdivision. Empty when unset. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString ResidenceSubdivisionCode;
+
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
 	bool bIsActive = true;
 

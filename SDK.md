@@ -47,8 +47,8 @@ The plugin exposes **`UFastGameSubsystem`** (Game Instance subsystem, display na
 - **Send Auth Code**: empty Identity → ENTER store; Enter → **Verify** → signup OTP; Enter Password → recovery OTP.
 - **Verify Auth Code** pins: **Signup** | **Assign New Password** | **Failed** (wire to Register or Assign New Password).
 - **Login** takes `Identity` (optional), `Password`, **Channel**. Empty `Identity` → ENTER store.
-- **Register** (`Signup`) takes **Email** / **Phone** (optional after Enter), **Password** + **Password Confirm**, optional **Full Name**. Both Email+Phone empty → ENTER store. Dispatches `/signup` or `/complete` from LastEnterRoute.
-- **Update Full Name** (`PATCH /me`) after login — display name only (Success | Failed).
+- **Register** (`Signup`) takes **Email** / **Phone** (optional after Enter), **Password** + **Password Confirm**, optional **Full Name**. Both Email+Phone empty → ENTER store. Dispatches `/signup` or `/complete` from LastEnterRoute. The existing node is unchanged; **Register With Residence** adds optional ISO country/subdivision codes for new-user signup.
+- **Update Full Name** remains unchanged. **Update Residence** and **Update Profile With Residence** patch nullable `residence_country_code` / `residence_subdivision_code`; empty residence inputs clear those fields.
 - **Assign New Password**: empty `Identity` → ENTER store. No Code pin and no Full Name. Wire from Verify Auth Code → Assign New Password.
 - **Clear Entered Identity** clears the store; **Clear Local Cache** also clears it.
 - Helpers: **Is Email Identity** / **Is Phone Identity**. **Set Game Code** / **Get Game Code** if the active title changes after init.
@@ -109,8 +109,12 @@ Client->Auth->CompleteAccount(Password, PasswordConfirm, FullName,
   [](bool bOk, int32 Code, FString UserId, FString OutEmail, FString OutPhone, FString Token, FString Err) { /* ... */ });
 Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName,
   [](bool bOk, int32 Code, FString UserId, FString OutEmail, FString OutPhone, FString Token, FString Err) { /* logged in on success */ });
+Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName, CountryCode, SubdivisionCode,
+  [](bool bOk, int32 Code, FString UserId, FString OutEmail, FString OutPhone, FString Token, FString Err) { /* logged in on success */ });
 Client->Auth->Login(Identity, Password, [](bool bOk, int32 Code, FString Token, FString Err) { /* ... */ });
 Client->Auth->UpdateFullName(FullName, [](bool bOk, int32 Code, FFastGameUser User, FString Err) { /* ... */ });
+Client->Auth->UpdateResidence(CountryCode, SubdivisionCode,
+  [](bool bOk, int32 Code, FFastGameUser User, FString Err) { /* empty codes clear residence */ });
 // Forgot from Login screen — 3 steps
 Client->Auth->RequestPasswordRecovery(Identity, [](bool bOk, int32 Code, FString Err) { /* OTP sent */ });
 Client->Auth->VerifyPasswordRecovery(Identity, Code, [](bool bOk, int32 Status, FString Err) {

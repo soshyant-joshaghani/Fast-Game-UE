@@ -194,6 +194,28 @@ public:
 		FString& Message);
 
 	/**
+	 * Residence-aware Register variant. The original Register node remains unchanged.
+	 * Empty residence values are omitted for new-user signup.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Outcome", DisplayName = "Register With Residence"))
+	void SignupWithResidence(
+		const FString& Email,
+		const FString& Phone,
+		const FString& Password,
+		const FString& PasswordConfirm,
+		const FString& FullName,
+		const FString& ResidenceCountryCode,
+		const FString& ResidenceSubdivisionCode,
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FString& UserId,
+		FString& OutEmail,
+		FString& OutPhone,
+		FString& Message);
+
+	/**
 	 * Assign new password after forgot OTP (password + confirm, no name).
 	 * Empty Identity → ENTER store. Wire from Verify Auth Code → Assign New Password.
 	 * Pins: Success | Failed.
@@ -271,6 +293,31 @@ public:
 		ExpandEnumAsExecs = "Outcome", DisplayName = "Update Full Name"))
 	void UpdateFullName(
 		const FString& FullName,
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FFastGameBPUser& User,
+		FString& Message);
+
+	/** PATCH /me residence fields. Empty values clear existing nullable fields. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Outcome", DisplayName = "Update Residence"))
+	void UpdateResidence(
+		const FString& ResidenceCountryCode,
+		const FString& ResidenceSubdivisionCode,
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FFastGameBPUser& User,
+		FString& Message);
+
+	/** PATCH /me display name and residence fields in one request. */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Outcome", DisplayName = "Update Profile With Residence"))
+	void UpdateProfileWithResidence(
+		const FString& FullName,
+		const FString& ResidenceCountryCode,
+		const FString& ResidenceSubdivisionCode,
 		FLatentActionInfo LatentInfo,
 		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
 		int32& StatusCode,
@@ -966,6 +1013,33 @@ public:
 	FOnFastGameSimpleComplete OnTrackAdEventComplete;
 
 private:
+	void SignupInternal(
+		const FString& Email,
+		const FString& Phone,
+		const FString& Password,
+		const FString& PasswordConfirm,
+		const FString& FullName,
+		const FString& ResidenceCountryCode,
+		const FString& ResidenceSubdivisionCode,
+		FLatentActionInfo LatentInfo,
+		EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FString& UserId,
+		FString& OutEmail,
+		FString& OutPhone,
+		FString& Message);
+	void UpdateProfileInternal(
+		const FString& FullName,
+		const FString& ResidenceCountryCode,
+		const FString& ResidenceSubdivisionCode,
+		bool bIncludeFullName,
+		bool bIncludeResidence,
+		FLatentActionInfo LatentInfo,
+		EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FFastGameBPUser& User,
+		FString& Message);
+
 	bool EnsureClient(FString& OutError) const;
 	void BroadcastAuthComplete(EFastGameAuthCompleteReason Reason);
 	bool EnsureStoreSetup(FString& OutMessage) const;

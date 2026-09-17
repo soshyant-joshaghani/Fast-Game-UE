@@ -209,6 +209,8 @@ namespace FastGameBlueprintConvert
 		Out.bEmailVerified = In.bEmailVerified;
 		Out.bPhoneVerified = In.bPhoneVerified;
 		Out.FullName = In.FullName;
+		Out.ResidenceCountryCode = In.ResidenceCountryCode;
+		Out.ResidenceSubdivisionCode = In.ResidenceSubdivisionCode;
 		Out.bIsActive = In.bIsActive;
 		Out.bIsSuperuser = In.bIsSuperuser;
 		return Out;

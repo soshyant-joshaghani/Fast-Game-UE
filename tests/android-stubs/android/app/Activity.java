@@ -6,8 +6,11 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.os.Bundle;
+import android.view.Window;
 
 public class Activity extends Context {
+    private final Window window = new Window();
+
     public Intent getIntent() {
         return new Intent();
     }
@@ -35,4 +38,14 @@ public class Activity extends Context {
     protected void onDestroy() {}
 
     public void finish() {}
+
+    public boolean isFinishing() { return false; }
+
+    public void runOnUiThread(Runnable action) { action.run(); }
+
+    public void setContentView(Object view) {}
+
+    public void overridePendingTransition(int enterAnim, int exitAnim) {}
+
+    public Window getWindow() { return window; }
 }

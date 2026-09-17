@@ -887,6 +887,47 @@ void UFastGameSubsystem::Signup(
 	FString& OutPhone,
 	FString& Message)
 {
+	SignupInternal(Email, Phone, Password, PasswordConfirm, FullName, TEXT(""), TEXT(""),
+		LatentInfo, Outcome, StatusCode, UserId, OutEmail, OutPhone, Message);
+}
+
+void UFastGameSubsystem::SignupWithResidence(
+	const FString& Email,
+	const FString& Phone,
+	const FString& Password,
+	const FString& PasswordConfirm,
+	const FString& FullName,
+	const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FString& UserId,
+	FString& OutEmail,
+	FString& OutPhone,
+	FString& Message)
+{
+	SignupInternal(Email, Phone, Password, PasswordConfirm, FullName,
+		ResidenceCountryCode, ResidenceSubdivisionCode,
+		LatentInfo, Outcome, StatusCode, UserId, OutEmail, OutPhone, Message);
+}
+
+void UFastGameSubsystem::SignupInternal(
+	const FString& Email,
+	const FString& Phone,
+	const FString& Password,
+	const FString& PasswordConfirm,
+	const FString& FullName,
+	const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FString& UserId,
+	FString& OutEmail,
+	FString& OutPhone,
+	FString& Message)
+{
 	UserId.Reset();
 	OutEmail.Reset();
 	OutPhone.Reset();
@@ -968,7 +1009,8 @@ void UFastGameSubsystem::Signup(
 	}
 	else
 	{
-		Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName, OnDone);
+		Client->Auth->Signup(Email, Phone, Password, PasswordConfirm, FullName,
+			ResidenceCountryCode, ResidenceSubdivisionCode, OnDone);
 	}
 }
 
@@ -1246,6 +1288,49 @@ void UFastGameSubsystem::UpdateFullName(
 	FFastGameBPUser& User,
 	FString& Message)
 {
+	UpdateProfileInternal(FullName, TEXT(""), TEXT(""), true, false,
+		LatentInfo, Outcome, StatusCode, User, Message);
+}
+
+void UFastGameSubsystem::UpdateResidence(
+	const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FFastGameBPUser& User,
+	FString& Message)
+{
+	UpdateProfileInternal(TEXT(""), ResidenceCountryCode, ResidenceSubdivisionCode, false, true,
+		LatentInfo, Outcome, StatusCode, User, Message);
+}
+
+void UFastGameSubsystem::UpdateProfileWithResidence(
+	const FString& FullName,
+	const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FFastGameBPUser& User,
+	FString& Message)
+{
+	UpdateProfileInternal(FullName, ResidenceCountryCode, ResidenceSubdivisionCode, true, true,
+		LatentInfo, Outcome, StatusCode, User, Message);
+}
+
+void UFastGameSubsystem::UpdateProfileInternal(
+	const FString& FullName,
+	const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	bool bIncludeFullName,
+	bool bIncludeResidence,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FFastGameBPUser& User,
+	FString& Message)
+{
 	User = FFastGameBPUser();
 	Outcome = EFastGameRequestOutcome::Failed;
 
@@ -1288,7 +1373,7 @@ void UFastGameSubsystem::UpdateFullName(
 
 	const int32 Gen = ClientGeneration;
 	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
-	Client->Auth->UpdateFullName(FullName, [WeakThis, Gen, Finish](bool bOk, int32 Code, FFastGameUser NativeUser, FString InMessage)
+	auto OnDone = [WeakThis, Gen, Finish](bool bOk, int32 Code, FFastGameUser NativeUser, FString InMessage)
 	{
 		FFastGameBPUser Bp = FastGameBlueprintConvert::ToBP(NativeUser);
 		AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, Code, Bp = MoveTemp(Bp), InMessage, Finish]() mutable
@@ -1307,7 +1392,19 @@ void UFastGameSubsystem::UpdateFullName(
 			}
 			Finish(bOk, Code, Bp, InMessage);
 		});
-	});
+	};
+	if (bIncludeFullName && bIncludeResidence)
+	{
+		Client->Auth->UpdateProfile(FullName, ResidenceCountryCode, ResidenceSubdivisionCode, OnDone);
+	}
+	else if (bIncludeResidence)
+	{
+		Client->Auth->UpdateResidence(ResidenceCountryCode, ResidenceSubdivisionCode, OnDone);
+	}
+	else
+	{
+		Client->Auth->UpdateFullName(FullName, OnDone);
+	}
 }
 
 void UFastGameSubsystem::LinkSteamWithTicket(

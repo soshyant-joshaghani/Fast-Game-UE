@@ -196,6 +196,10 @@ struct FASTGAME_API FFastGameUser
 	bool bEmailVerified = false;
 	bool bPhoneVerified = false;
 	FString FullName;
+	/** ISO 3166-1 alpha-2 residence country. Empty when the nullable API field is unset. */
+	FString ResidenceCountryCode;
+	/** ISO 3166-2 residence subdivision. Empty when the nullable API field is unset. */
+	FString ResidenceSubdivisionCode;
 	bool bIsActive = true;
 	bool bIsSuperuser = false;
 };

@@ -70,6 +70,10 @@ public:
 	void Signup(const FString& Email, const FString& Phone, const FString& Password, const FString& PasswordConfirm,
 		const FString& FullName,
 		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FString /*UserId*/, FString /*Email*/, FString /*Phone*/, FString /*AccessToken*/, FString /*Message*/)> OnDone);
+	/** Residence-aware signup. Empty residence values are omitted from the request. */
+	void Signup(const FString& Email, const FString& Phone, const FString& Password, const FString& PasswordConfirm,
+		const FString& FullName, const FString& ResidenceCountryCode, const FString& ResidenceSubdivisionCode,
+		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FString /*UserId*/, FString /*Email*/, FString /*Phone*/, FString /*AccessToken*/, FString /*Message*/)> OnDone);
 
 	/**
 	 * Complete Account: set password (+ optional full name) on a passwordless existing user.
@@ -81,6 +85,12 @@ public:
 
 	/** PATCH /base/login/me — display name only. Requires login. */
 	void UpdateFullName(const FString& FullName,
+		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FFastGameUser /*User*/, FString /*Message*/)> OnDone);
+	/** PATCH /base/login/me — nullable residence fields. Empty strings clear stored values. */
+	void UpdateResidence(const FString& ResidenceCountryCode, const FString& ResidenceSubdivisionCode,
+		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FFastGameUser /*User*/, FString /*Message*/)> OnDone);
+	/** PATCH /base/login/me — update display name and nullable residence fields together. */
+	void UpdateProfile(const FString& FullName, const FString& ResidenceCountryCode, const FString& ResidenceSubdivisionCode,
 		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FFastGameUser /*User*/, FString /*Message*/)> OnDone);
 
 	/** Forgot password step 1/3: send OTP. Empty Identity → ENTER-stored identity. */
@@ -140,6 +150,8 @@ private:
 		TFunction<void(bool, int32, FString, FString)> OnDone);
 	void LoginWithUsername(const FString& Username, const FString& Password,
 		TFunction<void(bool, int32, FString, FString)> OnDone);
+	void PatchSelfProfile(TSharedPtr<FJsonObject> Body,
+		TFunction<void(bool, int32, FFastGameUser, FString)> OnDone);
 
 	TSharedRef<FFastGameHttp> Http;
 	FFastGameConfig Config;

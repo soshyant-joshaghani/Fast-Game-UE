@@ -84,6 +84,29 @@ def test_ue_enter_identity_not_on_initialize_client():
     assert "POST /base/login/enter" in auth_h or "Enter(" in auth_h
 
 
+def test_ue_user_residence_contract_preserves_existing_blueprint_nodes():
+    types = _read(UE / "Source/FastGame/Public/FastGameTypes.h")
+    bp_types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    client_h = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    client_cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    subsystem_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    contract = _read(ROOT / "CONTRACT.md")
+
+    assert "FString ResidenceCountryCode;" in types
+    assert "FString ResidenceSubdivisionCode;" in types
+    assert "FString ResidenceCountryCode;" in bp_types
+    assert "FString ResidenceSubdivisionCode;" in bp_types
+    assert 'TEXT("residence_country_code")' in client_cpp
+    assert 'TEXT("residence_subdivision_code")' in client_cpp
+    assert "void UpdateResidence" in client_h
+    assert "void UpdateProfile" in client_h
+    assert 'DisplayName = "Register"' in subsystem_h
+    assert 'DisplayName = "Register With Residence"' in subsystem_h
+    assert 'DisplayName = "Update Full Name"' in subsystem_h
+    assert 'DisplayName = "Update Residence"' in subsystem_h
+    assert "nullable `residence_country_code`" in contract
+
+
 def test_ue_store_lock_on_login():
     shop = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
     header = _read(UE / "Source/FastGame/Public/FastGameClient.h")

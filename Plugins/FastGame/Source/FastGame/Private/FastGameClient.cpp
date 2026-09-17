@@ -3,6 +3,7 @@
 #include "FastGameBlueprintConvert.h"
 #include "FastGameNativeStore.h"
 #include "FastGameStoreVerify.h"
+#include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -940,6 +941,14 @@ void FFastGameAuth::Signup(const FString& Email, const FString& Phone, const FSt
 	const FString& PasswordConfirm, const FString& FullName,
 	TFunction<void(bool, int32, FString, FString, FString, FString, FString)> OnDone)
 {
+	Signup(Email, Phone, Password, PasswordConfirm, FullName, TEXT(""), TEXT(""), MoveTemp(OnDone));
+}
+
+void FFastGameAuth::Signup(const FString& Email, const FString& Phone, const FString& Password,
+	const FString& PasswordConfirm, const FString& FullName,
+	const FString& ResidenceCountryCode, const FString& ResidenceSubdivisionCode,
+	TFunction<void(bool, int32, FString, FString, FString, FString, FString)> OnDone)
+{
 	FString TrimEmail = Email.TrimStartAndEnd();
 	FString TrimPhone = Phone.TrimStartAndEnd();
 	if (TrimEmail.IsEmpty() && TrimPhone.IsEmpty())
@@ -990,6 +999,16 @@ void FFastGameAuth::Signup(const FString& Email, const FString& Phone, const FSt
 	if (!FullName.IsEmpty())
 	{
 		Body->SetStringField(TEXT("full_name"), FullName);
+	}
+	const FString TrimCountry = ResidenceCountryCode.TrimStartAndEnd().ToUpper();
+	const FString TrimSubdivision = ResidenceSubdivisionCode.TrimStartAndEnd().ToUpper();
+	if (!TrimCountry.IsEmpty())
+	{
+		Body->SetStringField(TEXT("residence_country_code"), TrimCountry);
+	}
+	if (!TrimSubdivision.IsEmpty())
+	{
+		Body->SetStringField(TEXT("residence_subdivision_code"), TrimSubdivision);
 	}
 	const FString TrimGame = Config.GameCode.TrimStartAndEnd();
 	if (!TrimGame.IsEmpty())
@@ -1298,6 +1317,8 @@ void FFastGameAuth::GetMe(TFunction<void(bool, int32, FFastGameUser, FString)> O
 			Obj->TryGetBoolField(TEXT("email_verified"), User.bEmailVerified);
 			Obj->TryGetBoolField(TEXT("phone_verified"), User.bPhoneVerified);
 			Obj->TryGetStringField(TEXT("full_name"), User.FullName);
+			Obj->TryGetStringField(TEXT("residence_country_code"), User.ResidenceCountryCode);
+			Obj->TryGetStringField(TEXT("residence_subdivision_code"), User.ResidenceSubdivisionCode);
 			Obj->TryGetBoolField(TEXT("is_active"), User.bIsActive);
 			Obj->TryGetBoolField(TEXT("is_superuser"), User.bIsSuperuser);
 			if (OnDone) OnDone(true, StatusCode, User, TEXT(""));
@@ -1309,6 +1330,64 @@ void FFastGameAuth::UpdateFullName(const FString& FullName,
 {
 	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("full_name"), FullName);
+	PatchSelfProfile(Body, MoveTemp(OnDone));
+}
+
+void FFastGameAuth::UpdateResidence(const FString& ResidenceCountryCode, const FString& ResidenceSubdivisionCode,
+	TFunction<void(bool, int32, FFastGameUser, FString)> OnDone)
+{
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	const FString Country = ResidenceCountryCode.TrimStartAndEnd().ToUpper();
+	const FString Subdivision = ResidenceSubdivisionCode.TrimStartAndEnd().ToUpper();
+	if (Country.IsEmpty())
+	{
+		Body->SetField(TEXT("residence_country_code"), MakeShared<FJsonValueNull>());
+	}
+	else
+	{
+		Body->SetStringField(TEXT("residence_country_code"), Country);
+	}
+	if (Subdivision.IsEmpty())
+	{
+		Body->SetField(TEXT("residence_subdivision_code"), MakeShared<FJsonValueNull>());
+	}
+	else
+	{
+		Body->SetStringField(TEXT("residence_subdivision_code"), Subdivision);
+	}
+	PatchSelfProfile(Body, MoveTemp(OnDone));
+}
+
+void FFastGameAuth::UpdateProfile(const FString& FullName, const FString& ResidenceCountryCode,
+	const FString& ResidenceSubdivisionCode,
+	TFunction<void(bool, int32, FFastGameUser, FString)> OnDone)
+{
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("full_name"), FullName);
+	const FString Country = ResidenceCountryCode.TrimStartAndEnd().ToUpper();
+	const FString Subdivision = ResidenceSubdivisionCode.TrimStartAndEnd().ToUpper();
+	if (Country.IsEmpty())
+	{
+		Body->SetField(TEXT("residence_country_code"), MakeShared<FJsonValueNull>());
+	}
+	else
+	{
+		Body->SetStringField(TEXT("residence_country_code"), Country);
+	}
+	if (Subdivision.IsEmpty())
+	{
+		Body->SetField(TEXT("residence_subdivision_code"), MakeShared<FJsonValueNull>());
+	}
+	else
+	{
+		Body->SetStringField(TEXT("residence_subdivision_code"), Subdivision);
+	}
+	PatchSelfProfile(Body, MoveTemp(OnDone));
+}
+
+void FFastGameAuth::PatchSelfProfile(TSharedPtr<FJsonObject> Body,
+	TFunction<void(bool, int32, FFastGameUser, FString)> OnDone)
+{
 	Http->PatchJson(TEXT("/base/login/me"), FastGameJsonUtil::Stringify(Body),
 		[OnDone](bool bOk, int32 StatusCode, FString Resp, FString Err)
 		{
@@ -1322,7 +1401,7 @@ void FFastGameAuth::UpdateFullName(const FString& FullName,
 			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(Resp);
 			if (!Obj.IsValid())
 			{
-				if (OnDone) OnDone(false, StatusCode, User, TEXT("Update Full Name response invalid"));
+				if (OnDone) OnDone(false, StatusCode, User, TEXT("Update profile response invalid"));
 				return;
 			}
 			Obj->TryGetStringField(TEXT("id"), User.Id);
@@ -1331,6 +1410,8 @@ void FFastGameAuth::UpdateFullName(const FString& FullName,
 			Obj->TryGetBoolField(TEXT("email_verified"), User.bEmailVerified);
 			Obj->TryGetBoolField(TEXT("phone_verified"), User.bPhoneVerified);
 			Obj->TryGetStringField(TEXT("full_name"), User.FullName);
+			Obj->TryGetStringField(TEXT("residence_country_code"), User.ResidenceCountryCode);
+			Obj->TryGetStringField(TEXT("residence_subdivision_code"), User.ResidenceSubdivisionCode);
 			Obj->TryGetBoolField(TEXT("is_active"), User.bIsActive);
 			Obj->TryGetBoolField(TEXT("is_superuser"), User.bIsSuperuser);
 			if (OnDone) OnDone(true, StatusCode, User, TEXT(""));
