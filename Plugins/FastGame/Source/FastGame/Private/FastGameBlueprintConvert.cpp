@@ -216,6 +216,27 @@ namespace FastGameBlueprintConvert
 		return Out;
 	}
 
+	FFastGameBPResidenceSubdivision ToBP(const FFastGameResidenceSubdivision& In)
+	{
+		FFastGameBPResidenceSubdivision Out;
+		Out.Code = In.Code;
+		Out.Name = In.Name;
+		return Out;
+	}
+
+	FFastGameBPResidenceCountry ToBP(const FFastGameResidenceCountry& In)
+	{
+		FFastGameBPResidenceCountry Out;
+		Out.Code = In.Code;
+		Out.Name = In.Name;
+		Out.Subdivisions.Reserve(In.Subdivisions.Num());
+		for (const FFastGameResidenceSubdivision& Sub : In.Subdivisions)
+		{
+			Out.Subdivisions.Add(ToBP(Sub));
+		}
+		return Out;
+	}
+
 	FFastGameBPAdvertisement ToBP(const FFastGameAdvertisement& In)
 	{
 		FFastGameBPAdvertisement Out;
@@ -303,6 +324,28 @@ namespace FastGameBlueprintConvert
 		for (const FFastGameAssetPack& P : In)
 		{
 			Out.Add(ToBP(P));
+		}
+		return Out;
+	}
+
+	TArray<FFastGameBPResidenceCountry> ToBPArray(const TArray<FFastGameResidenceCountry>& In)
+	{
+		TArray<FFastGameBPResidenceCountry> Out;
+		Out.Reserve(In.Num());
+		for (const FFastGameResidenceCountry& C : In)
+		{
+			Out.Add(ToBP(C));
+		}
+		return Out;
+	}
+
+	TArray<FFastGameBPResidenceSubdivision> ToBPArray(const TArray<FFastGameResidenceSubdivision>& In)
+	{
+		TArray<FFastGameBPResidenceSubdivision> Out;
+		Out.Reserve(In.Num());
+		for (const FFastGameResidenceSubdivision& S : In)
+		{
+			Out.Add(ToBP(S));
 		}
 		return Out;
 	}

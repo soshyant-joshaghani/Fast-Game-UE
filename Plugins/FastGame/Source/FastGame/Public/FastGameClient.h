@@ -118,8 +118,25 @@ public:
 	void VerifySignupVerification(const FString& Identity, const FString& Code,
 		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FString /*Message*/)> OnDone);
 
+	/** Force-OTP login step 1/2: send code. Empty Identity → ENTER store. */
+	void RequestLoginOtp(const FString& Identity,
+		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FString /*Message*/)> OnDone);
+
+	/**
+	 * Force-OTP login step 2/2: verify code → access_token (create-or-login).
+	 * Empty Identity → ENTER store. Stores token like LoginWithUsername.
+	 */
+	void VerifyLoginOtp(const FString& Identity, const FString& Code,
+		TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FString /*AccessToken*/, FString /*Message*/)> OnDone);
+
 	/** Current user profile (no password). Requires login. */
 	void GetMe(TFunction<void(bool /*bOk*/, int32 /*StatusCode*/, FFastGameUser /*User*/, FString /*Message*/)> OnDone);
+	/**
+	 * GET /base/users/residence-options — public ISO residence catalogue (no login).
+	 * Non-empty Country / Lang become query params (e.g. country=IR&lang=fa).
+	 */
+	void GetResidenceOptions(const FString& Country, const FString& Lang,
+		TFunction<void(bool /*bOk*/, TArray<FFastGameResidenceCountry> /*Countries*/, FString /*Err*/)> OnDone);
 	/** Bind Steam via Steamworks session ticket (uses client GameCode payment_config). */
 	void LinkSteamWithTicket(const FString& Ticket, const FString& Identity,
 		TFunction<void(bool /*bOk*/, bool /*bLinked*/, FString /*SteamId*/, FString /*Err*/)> OnDone);
@@ -172,9 +189,9 @@ public:
 		const FString& Lang = TEXT(""), bool bExpandI18n = false);
 	void GetGame(const FString& GameId, TFunction<void(bool, FFastGameCatalogDetail, FString)> OnDone,
 		const FString& Lang = TEXT(""), bool bExpandI18n = false);
-	/** Public auth gates for new-user OTP (no login required). */
+	/** Public auth gates for new-user OTP / force OTP (no login required). */
 	void GetAuthRequirements(const FString& GameId,
-		TFunction<void(bool /*bOk*/, bool /*bVerifyPhone*/, bool /*bVerifyEmail*/, FString /*Err*/)> OnDone);
+		TFunction<void(bool /*bOk*/, bool /*bVerifyPhone*/, bool /*bVerifyEmail*/, bool /*bForceOtp*/, FString /*Err*/)> OnDone);
 	/**
 	 * Legacy public WS URL. Prefer Realtime.JoinMap / seat game_server_url for online join.
 	 * FastAPI helper only — designers should not use this as the primary online join path.

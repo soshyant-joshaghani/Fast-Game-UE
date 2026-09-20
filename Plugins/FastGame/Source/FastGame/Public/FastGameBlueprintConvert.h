@@ -21,6 +21,8 @@ namespace FastGameBlueprintConvert
 	FFastGameBPShopUnlock ToBP(const FFastGameShopUnlock& In);
 	FFastGameBPPreparedSession ToBP(const FFastGamePreparedSession& In);
 	FFastGameBPUser ToBP(const FFastGameUser& In);
+	FFastGameBPResidenceSubdivision ToBP(const FFastGameResidenceSubdivision& In);
+	FFastGameBPResidenceCountry ToBP(const FFastGameResidenceCountry& In);
 	FFastGameBPAdvertisement ToBP(const FFastGameAdvertisement& In);
 	FFastGameBPSeatMint ToBP(const FFastGameSeatMint& In);
 
@@ -30,6 +32,8 @@ namespace FastGameBlueprintConvert
 	TArray<FFastGameBPCharacter> ToBPArray(const TArray<FFastGameCharacter>& In);
 	TArray<FFastGameBPShopLine> ToBPArray(const TArray<FFastGameShopLine>& In);
 	TArray<FFastGameBPAssetPack> ToBPArray(const TArray<FFastGameAssetPack>& In);
+	TArray<FFastGameBPResidenceCountry> ToBPArray(const TArray<FFastGameResidenceCountry>& In);
+	TArray<FFastGameBPResidenceSubdivision> ToBPArray(const TArray<FFastGameResidenceSubdivision>& In);
 
 	FString StorePlatformToId(EFastGameStorePlatform Platform);
 	EFastGameStorePlatform StorePlatformFromId(const FString& Provider);

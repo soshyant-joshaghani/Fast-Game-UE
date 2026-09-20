@@ -120,6 +120,8 @@ struct FASTGAME_API FFastGameCatalogDetail : public FFastGameCatalogEntry
 	/** New-user OTP gates from catalog auth_requirements. */
 	bool bAuthVerifyPhone = false;
 	bool bAuthVerifyEmail = false;
+	/** Force OTP login (no password) from catalog auth_requirements. */
+	bool bAuthForceOtp = false;
 };
 
 struct FASTGAME_API FFastGameCharacter
@@ -202,6 +204,21 @@ struct FASTGAME_API FFastGameUser
 	FString ResidenceSubdivisionCode;
 	bool bIsActive = true;
 	bool bIsSuperuser = false;
+};
+
+/** ISO 3166-2 subdivision from GET /base/users/residence-options (e.g. IR-23 / تهران). */
+struct FASTGAME_API FFastGameResidenceSubdivision
+{
+	FString Code;
+	FString Name;
+};
+
+/** ISO 3166-1 country + subdivisions from residence-options. */
+struct FASTGAME_API FFastGameResidenceCountry
+{
+	FString Code;
+	FString Name;
+	TArray<FFastGameResidenceSubdivision> Subdivisions;
 };
 
 struct FASTGAME_API FFastGamePreparedSession

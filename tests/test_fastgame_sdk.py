@@ -90,6 +90,9 @@ def test_ue_user_residence_contract_preserves_existing_blueprint_nodes():
     client_h = _read(UE / "Source/FastGame/Public/FastGameClient.h")
     client_cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
     subsystem_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    subsystem_cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
+    latent = _read(UE / "Source/FastGame/Private/FastGameLatentActions.h")
+    convert_h = _read(UE / "Source/FastGame/Public/FastGameBlueprintConvert.h")
     contract = _read(ROOT / "CONTRACT.md")
 
     assert "FString ResidenceCountryCode;" in types
@@ -105,6 +108,24 @@ def test_ue_user_residence_contract_preserves_existing_blueprint_nodes():
     assert 'DisplayName = "Update Full Name"' in subsystem_h
     assert 'DisplayName = "Update Residence"' in subsystem_h
     assert "nullable `residence_country_code`" in contract
+
+    assert "FFastGameResidenceSubdivision" in types
+    assert "FFastGameResidenceCountry" in types
+    assert "FFastGameBPResidenceSubdivision" in bp_types
+    assert "FFastGameBPResidenceCountry" in bp_types
+    assert "void GetResidenceOptions" in client_h
+    assert "void FFastGameAuth::GetResidenceOptions" in client_cpp
+    assert "/base/users/residence-options" in client_cpp
+    assert "lang" in client_cpp[client_cpp.find("GetResidenceOptions") :]
+    assert "country" in client_cpp[client_cpp.find("GetResidenceOptions") :]
+    assert 'DisplayName = "Get Residence Options"' in subsystem_h
+    assert "CPP_Default_Lang = \"fa\"" in subsystem_h
+    assert "void UFastGameSubsystem::GetResidenceOptions" in subsystem_cpp
+    assert "ResidenceCountries" in latent
+    assert "ResidenceSubdivisions" in latent
+    assert "ToBP(const FFastGameResidenceSubdivision&" in convert_h
+    assert "residence-options?lang&country" in contract
+    assert "Get Residence Options" in contract
 
 
 def test_ue_store_lock_on_login():
@@ -195,6 +216,95 @@ def test_ue_auth_shop_scenario_exec_pins():
     assert "EnterPinOut" in latent
     assert "AuthCheckOut" in latent
     assert "ShopAccessRouteOut" in latent
+
+
+def test_ue_force_otp_auth_flow():
+    types_h = _read(UE / "Source/FastGame/Public/FastGameTypes.h")
+    bp_types = _read(UE / "Source/FastGame/Public/FastGameBlueprintTypes.h")
+    client_h = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    client_cpp = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    sub_h = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
+    sub_cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
+    contract = _read(ROOT / "CONTRACT.md")
+
+    assert "bool bAuthForceOtp = false;" in types_h
+    assert 'TEXT("force_otp")' in client_cpp
+    assert "D.bAuthForceOtp" in client_cpp
+
+    verify_pin = bp_types[
+        bp_types.find("enum class EFastGameVerifyAuthPin") : bp_types.find(
+            "enum class EFastGameAuthCheck"
+        )
+    ]
+    assert 'Authenticated UMETA(DisplayName = "Authenticated")' in verify_pin
+    assert 'Signup UMETA(DisplayName = "Signup")' in verify_pin
+    assert 'AssignNewPassword UMETA(DisplayName = "Assign New Password")' in verify_pin
+    assert verify_pin.index("Authenticated") < verify_pin.index("Failed")
+
+    assert "void RequestLoginOtp" in client_h
+    assert "void VerifyLoginOtp" in client_h
+    assert "void FFastGameAuth::RequestLoginOtp" in client_cpp
+    assert "void FFastGameAuth::VerifyLoginOtp" in client_cpp
+    assert "/base/login/otp/request" in client_cpp
+    assert "/base/login/otp/verify" in client_cpp
+    assert 'TEXT("access_token")' in client_cpp[
+        client_cpp.find("void FFastGameAuth::VerifyLoginOtp") : client_cpp.find(
+            "void FFastGameAuth::GetMe"
+        )
+    ]
+    assert "SaveAccessTokenFile" in client_cpp[
+        client_cpp.find("void FFastGameAuth::VerifyLoginOtp") : client_cpp.find(
+            "void FFastGameAuth::GetMe"
+        )
+    ]
+
+    assert "bForceOtp" in client_h[
+        client_h.find("void GetAuthRequirements") : client_h.find(
+            "void GetGameServer"
+        )
+    ]
+    get_auth = client_cpp[
+        client_cpp.find("void FFastGameCatalog::GetAuthRequirements") : client_cpp.find(
+            "void FFastGameCatalog::GetGameServer"
+        )
+    ]
+    assert 'TEXT("force_otp")' in get_auth
+    assert "bForceOtp" in get_auth
+
+    assert "bool bForceOtpFlow = false;" in sub_h
+    assert "bForceOtpFlow = false;" in sub_cpp[
+        sub_cpp.find("void UFastGameSubsystem::BackToEnterId") : sub_cpp.find(
+            "void UFastGameSubsystem::BeginForgotPassword"
+        )
+    ]
+    assert "RequestLoginOtp" in sub_cpp[
+        sub_cpp.find("void UFastGameSubsystem::SendAuthCode") : sub_cpp.find(
+            "void UFastGameSubsystem::VerifyAuthCode"
+        )
+    ]
+    verify_fn = sub_cpp[
+        sub_cpp.find("void UFastGameSubsystem::VerifyAuthCode") : sub_cpp.find(
+            "bool UFastGameSubsystem::IsEmailIdentity"
+        )
+    ]
+    assert "VerifyLoginOtp" in verify_fn
+    assert "EFastGameVerifyAuthPin::Authenticated" in verify_fn
+    assert "BroadcastAuthComplete(EFastGameAuthCompleteReason::Login)" in verify_fn
+
+    enter_fn = sub_cpp[
+        sub_cpp.find("void UFastGameSubsystem::Enter(") : sub_cpp.find(
+            "void UFastGameSubsystem::Login("
+        )
+    ]
+    assert "bForceOtp" in enter_fn
+    assert "bForceOtpFlow = bForceOtp" in enter_fn
+    assert "EFastGameEnterRoute::VerifyId" in enter_fn
+
+    assert "force_otp" in contract
+    assert "/base/login/otp/request" in contract
+    assert "/base/login/otp/verify" in contract
+    assert "Authenticated" in contract
+    assert "bForceOtpFlow" in contract or "Force OTP" in contract
 
 
 def test_ue_shop_empty_pins_use_initialize_game():

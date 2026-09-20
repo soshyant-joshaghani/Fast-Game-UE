@@ -388,6 +388,35 @@ struct FASTGAME_API FFastGameBPUser
 	bool bIsSuperuser = false;
 };
 
+/** Blueprint mirror of residence-options subdivision (Code = ISO, Name = localized label). */
+USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPResidenceSubdivision
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString Code;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString Name;
+};
+
+/** Blueprint mirror of residence-options country + subdivisions. */
+USTRUCT(BlueprintType)
+struct FASTGAME_API FFastGameBPResidenceCountry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString Code;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	FString Name;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame")
+	TArray<FFastGameBPResidenceSubdivision> Subdivisions;
+};
+
 USTRUCT(BlueprintType)
 struct FASTGAME_API FFastGameBPPreparedSession
 {
@@ -542,13 +571,15 @@ enum class EFastGameRequestOutcome : uint8
 
 /**
  * Verify Auth Code exec pins after a successful OTP check.
- * Signup → Register (name + password); Assign New Password → Assign New Password node (password only).
+ * Signup → Register (name + password); Assign New Password → Assign New Password node (password only);
+ * Authenticated → Force OTP login (token issued).
  */
 UENUM(BlueprintType)
 enum class EFastGameVerifyAuthPin : uint8
 {
 	Signup UMETA(DisplayName = "Signup"),
 	AssignNewPassword UMETA(DisplayName = "Assign New Password"),
+	Authenticated UMETA(DisplayName = "Authenticated"),
 	Failed UMETA(DisplayName = "Failed"),
 };
 

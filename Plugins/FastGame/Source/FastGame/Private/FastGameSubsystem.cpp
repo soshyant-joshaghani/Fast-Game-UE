@@ -227,6 +227,7 @@ void UFastGameSubsystem::BroadcastAuthComplete(EFastGameAuthCompleteReason Reaso
 void UFastGameSubsystem::BackToEnterId()
 {
 	bForgotPasswordFlow = false;
+	bForceOtpFlow = false;
 	bOtpAutoSentThisVisit = false;
 	OnBackToEnterId.Broadcast(true, TEXT(""));
 }
@@ -256,6 +257,15 @@ void UFastGameSubsystem::NotifyOtpPageShown(bool bAutoSend)
 	const FString Identity = GetEnteredIdentity();
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
+		if (bForceOtpFlow)
+		{
+			Client->Auth->RequestLoginOtp(Identity,
+				[this](bool bOk, int32 Code, FString InMessage)
+				{
+					FastGameSubsystemLatent::SetLastRequest(this, Code, InMessage);
+				});
+			return;
+		}
 		Client->Auth->RequestSignupVerification(Identity,
 			[this](bool bOk, int32 Code, FString InMessage)
 			{
@@ -735,6 +745,7 @@ void UFastGameSubsystem::Enter(
 			if (bOk)
 			{
 				S->bForgotPasswordFlow = false;
+				S->bForceOtpFlow = false;
 				S->bOtpAutoSentThisVisit = false;
 			}
 		}
@@ -773,37 +784,51 @@ void UFastGameSubsystem::Enter(
 			const bool bIsEmail = ChannelStr.Equals(TEXT("email"), ESearchCase::IgnoreCase);
 			const FString IdentityOut = bIsEmail ? Email : Phone;
 
-			auto FinishRouted = [FinishEnter, Code, IdentityOut, Email, Phone, bIsEmail](EFastGameEnterRoute RouteOut)
+			auto FinishRouted = [this, FinishEnter, Code, IdentityOut, Email, Phone, bIsEmail](
+				EFastGameEnterRoute RouteOut, bool bForceOtp)
 			{
-				AsyncTask(ENamedThreads::GameThread, [FinishEnter, Code, RouteOut, IdentityOut, Email, Phone, bIsEmail]()
+				AsyncTask(ENamedThreads::GameThread, [this, FinishEnter, Code, RouteOut, IdentityOut, Email, Phone, bIsEmail, bForceOtp]()
 				{
 					FinishEnter(true, Code, TEXT(""), RouteOut, IdentityOut, Email, Phone, bIsEmail, !bIsEmail);
+					bForceOtpFlow = bForceOtp;
 				});
 			};
+
+			const FString TrimGame = Client.IsValid() ? Client->Auth->GetGameCode().TrimStartAndEnd() : FString();
+			if (!TrimGame.IsEmpty() && Client.IsValid())
+			{
+				Client->Catalog->GetAuthRequirements(TrimGame,
+					[FinishRouted, bExists, bPasswordRequired, bIsEmail](
+						bool bReqOk, bool bVerifyPhone, bool bVerifyEmail, bool bForceOtp, FString /*Err*/)
+					{
+						if (bReqOk && bForceOtp)
+						{
+							FinishRouted(EFastGameEnterRoute::VerifyId, true);
+							return;
+						}
+						if (bExists)
+						{
+							FinishRouted(bPasswordRequired
+								? EFastGameEnterRoute::CompleteAccount
+								: EFastGameEnterRoute::Login, false);
+							return;
+						}
+						const bool bNeedsVerify = bReqOk && (bIsEmail ? bVerifyEmail : bVerifyPhone);
+						FinishRouted(bNeedsVerify
+							? EFastGameEnterRoute::VerifyId
+							: EFastGameEnterRoute::Register, false);
+					});
+				return;
+			}
 
 			if (bExists)
 			{
 				FinishRouted(bPasswordRequired
 					? EFastGameEnterRoute::CompleteAccount
-					: EFastGameEnterRoute::Login);
+					: EFastGameEnterRoute::Login, false);
 				return;
 			}
-
-			const FString TrimGame = Client.IsValid() ? Client->Auth->GetGameCode().TrimStartAndEnd() : FString();
-			if (TrimGame.IsEmpty() || !Client.IsValid())
-			{
-				FinishRouted(EFastGameEnterRoute::Register);
-				return;
-			}
-
-			Client->Catalog->GetAuthRequirements(TrimGame,
-				[FinishRouted, bIsEmail](bool bReqOk, bool bVerifyPhone, bool bVerifyEmail, FString /*Err*/)
-				{
-					const bool bNeedsVerify = bReqOk && (bIsEmail ? bVerifyEmail : bVerifyPhone);
-					FinishRouted(bNeedsVerify
-						? EFastGameEnterRoute::VerifyId
-						: EFastGameEnterRoute::Register);
-				});
+			FinishRouted(EFastGameEnterRoute::Register, false);
 		});
 }
 
@@ -1094,6 +1119,18 @@ void UFastGameSubsystem::SendAuthCode(
 
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
+		if (bForceOtpFlow)
+		{
+			Client->Auth->RequestLoginOtp(Identity,
+				[Finish](bool bOk, int32 Code, FString InMessage)
+				{
+					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+					{
+						Finish(bOk, Code, InMessage);
+					});
+				});
+			return;
+		}
 		Client->Auth->RequestSignupVerification(Identity,
 			[Finish](bool bOk, int32 Code, FString InMessage)
 			{
@@ -1148,7 +1185,13 @@ void UFastGameSubsystem::VerifyAuthCode(
 		{
 			if (UFastGameSubsystem* S = WeakThis.Get())
 			{
-				if (S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
+				if (S->bForceOtpFlow && S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
+				{
+					OutPin = EFastGameVerifyAuthPin::Authenticated;
+					S->bLastLoginSucceeded = true;
+					S->BroadcastAuthComplete(EFastGameAuthCompleteReason::Login);
+				}
+				else if (S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
 				{
 					OutPin = EFastGameVerifyAuthPin::Signup;
 				}
@@ -1172,6 +1215,18 @@ void UFastGameSubsystem::VerifyAuthCode(
 
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
+		if (bForceOtpFlow)
+		{
+			Client->Auth->VerifyLoginOtp(Identity, Code,
+				[Finish](bool bOk, int32 Status, FString /*Token*/, FString InMessage)
+				{
+					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+					{
+						Finish(bOk, Status, InMessage);
+					});
+				});
+			return;
+		}
 		Client->Auth->VerifySignupVerification(Identity, Code,
 			[Finish](bool bOk, int32 Status, FString InMessage)
 			{
@@ -1405,6 +1460,77 @@ void UFastGameSubsystem::UpdateProfileInternal(
 	{
 		Client->Auth->UpdateFullName(FullName, OnDone);
 	}
+}
+
+void UFastGameSubsystem::GetResidenceOptions(
+	const FString& Country,
+	const FString& Lang,
+	FLatentActionInfo LatentInfo,
+	EFastGameRequestOutcome& Outcome,
+	int32& StatusCode,
+	FString& Message,
+	TArray<FFastGameBPResidenceCountry>& Countries,
+	TArray<FFastGameBPResidenceSubdivision>& Subdivisions)
+{
+	Countries.Reset();
+	Subdivisions.Reset();
+	Outcome = EFastGameRequestOutcome::Failed;
+
+	const FastGameSubsystemLatent::FSetup Setup = FastGameSubsystemLatent::Register(this, LatentInfo, StatusCode, Message, &Outcome);
+	if (!Setup.bRegistered)
+	{
+		return;
+	}
+
+	Setup.Action->ResidenceCountriesOut = &Countries;
+	Setup.Action->ResidenceSubdivisionsOut = &Subdivisions;
+
+	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
+	FString Err;
+	if (!EnsureClient(Err))
+	{
+		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
+		FastGameSubsystemLatent::FinishErr(State, false, Err);
+		return;
+	}
+
+	const FString FilterCountry = Country.TrimStartAndEnd().ToUpper();
+	const int32 Gen = ClientGeneration;
+	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
+	Client->Auth->GetResidenceOptions(Country, Lang,
+		[WeakThis, Gen, State, FilterCountry](bool bOk, TArray<FFastGameResidenceCountry> InCountries, FString Error)
+		{
+			TArray<FFastGameBPResidenceCountry> BpCountries = FastGameBlueprintConvert::ToBPArray(InCountries);
+			TArray<FFastGameBPResidenceSubdivision> BpSubs;
+			if (bOk && !FilterCountry.IsEmpty())
+			{
+				for (const FFastGameBPResidenceCountry& C : BpCountries)
+				{
+					if (C.Code.Equals(FilterCountry, ESearchCase::IgnoreCase))
+					{
+						BpSubs = C.Subdivisions;
+						break;
+					}
+				}
+			}
+			int32 Code = 0;
+			FString Msg;
+			FFastGameHttp::ParseStatusFromError(bOk, Error, Code, Msg);
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Gen, bOk, BpCountries = MoveTemp(BpCountries),
+				BpSubs = MoveTemp(BpSubs), Code, Msg, State]() mutable
+			{
+				if (UFastGameSubsystem* S = WeakThis.Get())
+				{
+					if (S->ClientGeneration == Gen)
+					{
+						FastGameSubsystemLatent::SetLastRequest(S, Code, Msg);
+					}
+				}
+				State->ResidenceCountries = BpCountries;
+				State->ResidenceSubdivisions = BpSubs;
+				FastGameSubsystemLatent::FinishStatus(State, bOk, Code, Msg);
+			});
+		});
 }
 
 void UFastGameSubsystem::LinkSteamWithTicket(

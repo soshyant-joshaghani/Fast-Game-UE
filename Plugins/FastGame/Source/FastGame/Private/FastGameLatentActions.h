@@ -27,6 +27,10 @@ struct FFastGameRequestLatentState
 	FFastGameBPCatalogDetail Game;
 	FString Url;
 
+	// Auth residence catalogue
+	TArray<FFastGameBPResidenceCountry> ResidenceCountries;
+	TArray<FFastGameBPResidenceSubdivision> ResidenceSubdivisions;
+
 	// Content
 	TArray<FFastGameBPCharacter> Characters;
 	FFastGameBPPreparedSession Session;
@@ -83,6 +87,8 @@ public:
 	TArray<FFastGameBPCatalogEntry>* GamesOut = nullptr;
 	FFastGameBPCatalogDetail* GameOut = nullptr;
 	FString* UrlOut = nullptr;
+	TArray<FFastGameBPResidenceCountry>* ResidenceCountriesOut = nullptr;
+	TArray<FFastGameBPResidenceSubdivision>* ResidenceSubdivisionsOut = nullptr;
 	TArray<FFastGameBPCharacter>* CharactersOut = nullptr;
 	FFastGameBPPreparedSession* SessionOut = nullptr;
 	FString* JsonBodyOut = nullptr;
@@ -145,6 +151,8 @@ public:
 			if (GamesOut) *GamesOut = State->Games;
 			if (GameOut) *GameOut = State->Game;
 			if (UrlOut) *UrlOut = State->Url;
+			if (ResidenceCountriesOut) *ResidenceCountriesOut = State->ResidenceCountries;
+			if (ResidenceSubdivisionsOut) *ResidenceSubdivisionsOut = State->ResidenceSubdivisions;
 			if (CharactersOut) *CharactersOut = State->Characters;
 			if (SessionOut) *SessionOut = State->Session;
 			if (JsonBodyOut) *JsonBodyOut = State->JsonBody;

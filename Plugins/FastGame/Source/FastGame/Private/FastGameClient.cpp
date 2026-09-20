@@ -210,6 +210,7 @@ namespace FastGameJsonUtil
 		{
 			(*AuthReq)->TryGetBoolField(TEXT("verify_phone"), D.bAuthVerifyPhone);
 			(*AuthReq)->TryGetBoolField(TEXT("verify_email"), D.bAuthVerifyEmail);
+			(*AuthReq)->TryGetBoolField(TEXT("force_otp"), D.bAuthForceOtp);
 		}
 
 		const TArray<TSharedPtr<FJsonValue>>* Modes = nullptr;
@@ -1293,6 +1294,75 @@ void FFastGameAuth::VerifySignupVerification(const FString& Identity, const FStr
 		OnDone);
 }
 
+void FFastGameAuth::RequestLoginOtp(const FString& Identity,
+	TFunction<void(bool, int32, FString)> OnDone)
+{
+	FString OutEmail, OutPhone, Err;
+	if (!ResolveContactFields(Identity, TEXT(""), TEXT(""), OutEmail, OutPhone, Err))
+	{
+		if (OnDone) OnDone(false, 0, Err);
+		return;
+	}
+	PostContactJson(TEXT("/base/login/otp/request"), OutEmail, OutPhone, nullptr, OnDone);
+}
+
+void FFastGameAuth::VerifyLoginOtp(const FString& Identity, const FString& Code,
+	TFunction<void(bool, int32, FString, FString)> OnDone)
+{
+	if (Code.TrimStartAndEnd().IsEmpty())
+	{
+		if (OnDone) OnDone(false, 0, TEXT(""), TEXT("Verification code is required"));
+		return;
+	}
+	FString OutEmail, OutPhone, Err;
+	if (!ResolveContactFields(Identity, TEXT(""), TEXT(""), OutEmail, OutPhone, Err))
+	{
+		if (OnDone) OnDone(false, 0, TEXT(""), Err);
+		return;
+	}
+	FString GameCode, GameErr;
+	if (!RequireGameCode(GameCode, GameErr))
+	{
+		if (OnDone) OnDone(false, 0, TEXT(""), GameErr);
+		return;
+	}
+	const FString CodeTrim = Code.TrimStartAndEnd();
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("game_code"), GameCode);
+	if (!OutEmail.IsEmpty())
+	{
+		Body->SetStringField(TEXT("email"), OutEmail);
+	}
+	if (!OutPhone.IsEmpty())
+	{
+		Body->SetStringField(TEXT("phone"), OutPhone);
+	}
+	Body->SetStringField(TEXT("code"), CodeTrim);
+	TSharedRef<FFastGameHttp> HttpRef = Http;
+	const FString TokenSlot = Config.AccessTokenSaveSlot;
+	Http->PostJson(TEXT("/base/login/otp/verify"), FastGameJsonUtil::Stringify(Body),
+		[HttpRef, TokenSlot, OnDone](bool bOk, int32 StatusCode, FString Resp, FString ErrMsg)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, StatusCode, TEXT(""),
+					FFastGameHttp::ExtractApiMessage(StatusCode, Resp, ErrMsg));
+				return;
+			}
+			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(Resp);
+			FString Token;
+			if (!Obj.IsValid() || !Obj->TryGetStringField(TEXT("access_token"), Token) || Token.IsEmpty())
+			{
+				if (OnDone) OnDone(false, StatusCode, TEXT(""), TEXT("Login OTP response missing access_token"));
+				return;
+			}
+			HttpRef->SetAccessToken(Token);
+			FastGameJsonUtil::SaveAccessTokenFile(TokenSlot, Token);
+			UE_LOG(LogTemp, Log, TEXT("FastGame: access token saved via login OTP (slot=%s)"), *TokenSlot);
+			if (OnDone) OnDone(true, StatusCode, Token, TEXT(""));
+		});
+}
+
 void FFastGameAuth::GetMe(TFunction<void(bool, int32, FFastGameUser, FString)> OnDone)
 {
 	Http->Get(TEXT("/base/login/me"),
@@ -1323,6 +1393,87 @@ void FFastGameAuth::GetMe(TFunction<void(bool, int32, FFastGameUser, FString)> O
 			Obj->TryGetBoolField(TEXT("is_superuser"), User.bIsSuperuser);
 			if (OnDone) OnDone(true, StatusCode, User, TEXT(""));
 		});
+}
+
+void FFastGameAuth::GetResidenceOptions(const FString& Country, const FString& Lang,
+	TFunction<void(bool, TArray<FFastGameResidenceCountry>, FString)> OnDone)
+{
+	FString Path = TEXT("/base/users/residence-options");
+	bool bNeedAmp = false;
+	auto Add = [&](const FString& Key, const FString& Value)
+	{
+		Path += bNeedAmp ? TEXT("&") : TEXT("?");
+		bNeedAmp = true;
+		Path += Key;
+		Path += TEXT("=");
+		Path += FGenericPlatformHttp::UrlEncode(Value);
+	};
+	const FString TrimLang = Lang.TrimStartAndEnd();
+	const FString TrimCountry = Country.TrimStartAndEnd().ToUpper();
+	if (!TrimLang.IsEmpty())
+	{
+		Add(TEXT("lang"), TrimLang);
+	}
+	if (!TrimCountry.IsEmpty())
+	{
+		Add(TEXT("country"), TrimCountry);
+	}
+	Http->Get(Path, [OnDone](bool bOk, int32, FString Body, FString Err)
+	{
+		TArray<FFastGameResidenceCountry> Countries;
+		if (!bOk)
+		{
+			if (OnDone) OnDone(false, Countries, Err);
+			return;
+		}
+		const TSharedPtr<FJsonObject> Root = FastGameJsonUtil::ParseObject(Body);
+		if (!Root.IsValid())
+		{
+			if (OnDone) OnDone(false, Countries, TEXT("Residence options response invalid"));
+			return;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* CountriesArr = nullptr;
+		if (Root->TryGetArrayField(TEXT("countries"), CountriesArr) && CountriesArr)
+		{
+			for (const TSharedPtr<FJsonValue>& CV : *CountriesArr)
+			{
+				if (!CV.IsValid() || CV->Type != EJson::Object)
+				{
+					continue;
+				}
+				const TSharedPtr<FJsonObject> CObj = CV->AsObject();
+				if (!CObj.IsValid())
+				{
+					continue;
+				}
+				FFastGameResidenceCountry CountryEntry;
+				CObj->TryGetStringField(TEXT("code"), CountryEntry.Code);
+				CObj->TryGetStringField(TEXT("name"), CountryEntry.Name);
+				const TArray<TSharedPtr<FJsonValue>>* Subs = nullptr;
+				if (CObj->TryGetArrayField(TEXT("subdivisions"), Subs) && Subs)
+				{
+					for (const TSharedPtr<FJsonValue>& SV : *Subs)
+					{
+						if (!SV.IsValid() || SV->Type != EJson::Object)
+						{
+							continue;
+						}
+						const TSharedPtr<FJsonObject> SObj = SV->AsObject();
+						if (!SObj.IsValid())
+						{
+							continue;
+						}
+						FFastGameResidenceSubdivision Sub;
+						SObj->TryGetStringField(TEXT("code"), Sub.Code);
+						SObj->TryGetStringField(TEXT("name"), Sub.Name);
+						CountryEntry.Subdivisions.Add(MoveTemp(Sub));
+					}
+				}
+				Countries.Add(MoveTemp(CountryEntry));
+			}
+		}
+		if (OnDone) OnDone(true, Countries, TEXT(""));
+	});
 }
 
 void FFastGameAuth::UpdateFullName(const FString& FullName,
@@ -1526,7 +1677,7 @@ void FFastGameCatalog::GetGame(const FString& GameId, TFunction<void(bool, FFast
 }
 
 void FFastGameCatalog::GetAuthRequirements(const FString& GameId,
-	TFunction<void(bool, bool, bool, FString)> OnDone)
+	TFunction<void(bool, bool, bool, bool, FString)> OnDone)
 {
 	const FString Path = TEXT("/apps/games/catalog/") + FastGameJsonUtil::Escape(GameId)
 		+ TEXT("/auth-requirements");
@@ -1535,18 +1686,20 @@ void FFastGameCatalog::GetAuthRequirements(const FString& GameId,
 		{
 			if (!bOk)
 			{
-				if (OnDone) OnDone(false, false, false, Err);
+				if (OnDone) OnDone(false, false, false, false, Err);
 				return;
 			}
 			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(Body);
 			bool bPhone = false;
 			bool bEmail = false;
+			bool bForceOtp = false;
 			if (Obj.IsValid())
 			{
 				Obj->TryGetBoolField(TEXT("verify_phone"), bPhone);
 				Obj->TryGetBoolField(TEXT("verify_email"), bEmail);
+				Obj->TryGetBoolField(TEXT("force_otp"), bForceOtp);
 			}
-			if (OnDone) OnDone(true, bPhone, bEmail, TEXT(""));
+			if (OnDone) OnDone(true, bPhone, bEmail, bForceOtp, TEXT(""));
 		});
 }
 

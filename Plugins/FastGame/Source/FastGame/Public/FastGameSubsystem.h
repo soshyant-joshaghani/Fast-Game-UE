@@ -244,7 +244,7 @@ public:
 
 	/**
 	 * Shared OTP send. Empty Identity → ENTER store.
-	 * Enter → Verify → signup OTP; Enter Password → recovery OTP (forgot); otherwise fails.
+	 * Force OTP → login OTP; Enter → Verify → signup OTP; Enter Password → recovery OTP (forgot); otherwise fails.
 	 * Pins: Success | Failed.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
@@ -258,8 +258,9 @@ public:
 
 	/**
 	 * Shared OTP verify. Empty Identity → ENTER store.
-	 * Pins: Signup | Assign New Password | Failed.
-	 * Signup → Register (name + password); Assign New Password → Assign New Password node.
+	 * Pins: Signup | Assign New Password | Authenticated | Failed.
+	 * Signup → Register (name + password); Assign New Password → Assign New Password node;
+	 * Authenticated → Force OTP login complete (token issued).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
 		ExpandEnumAsExecs = "Pin", DisplayName = "Verify Auth Code"))
@@ -323,6 +324,25 @@ public:
 		int32& StatusCode,
 		FFastGameBPUser& User,
 		FString& Message);
+
+	/**
+	 * GET /base/users/residence-options — fill ComboBox with localized Names while storing ISO Codes.
+	 * After Success: ForEach Subdivisions → ComboBox Add Option (Name); on select look up Code;
+	 * pass Code to Register With Residence / Update Residence. Force Iran: Country = "IR", Lang = "fa".
+	 * When Country is set, Subdivisions is also flattened from that country for easy ForEach.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
+		ExpandEnumAsExecs = "Outcome", DisplayName = "Get Residence Options",
+		CPP_Default_Country = "", CPP_Default_Lang = "fa"))
+	void GetResidenceOptions(
+		const FString& Country,
+		const FString& Lang,
+		FLatentActionInfo LatentInfo,
+		UPARAM(DisplayName = "Outcome") EFastGameRequestOutcome& Outcome,
+		int32& StatusCode,
+		FString& Message,
+		TArray<FFastGameBPResidenceCountry>& Countries,
+		TArray<FFastGameBPResidenceSubdivision>& Subdivisions);
 
 	UFUNCTION(BlueprintCallable, Category = "FastGame|Auth", meta = (Latent, LatentInfo = "LatentInfo",
 		ExpandEnumAsExecs = "Outcome"))
@@ -918,6 +938,10 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
 	bool bForgotPasswordFlow = false;
+
+	/** Enter routed via catalog force_otp — Send/Verify Auth Code use login OTP. */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bForceOtpFlow = false;
 
 	/** Cached profile from the last successful GetMe — bind Text / Image widgets to fields. */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
