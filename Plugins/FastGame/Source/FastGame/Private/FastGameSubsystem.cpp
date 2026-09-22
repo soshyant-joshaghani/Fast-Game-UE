@@ -228,6 +228,7 @@ void UFastGameSubsystem::BackToEnterId()
 {
 	bForgotPasswordFlow = false;
 	bForceOtpFlow = false;
+	bLastEnterExists = false;
 	bOtpAutoSentThisVisit = false;
 	OnBackToEnterId.Broadcast(true, TEXT(""));
 }
@@ -257,7 +258,7 @@ void UFastGameSubsystem::NotifyOtpPageShown(bool bAutoSend)
 	const FString Identity = GetEnteredIdentity();
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
-		if (bForceOtpFlow)
+		if (bForceOtpFlow || bLastEnterExists)
 		{
 			Client->Auth->RequestLoginOtp(Identity,
 				[this](bool bOk, int32 Code, FString InMessage)
@@ -671,6 +672,8 @@ void UFastGameSubsystem::ClearLocalCache()
 void UFastGameSubsystem::ClearEnteredIdentity()
 {
 	LastEnterRoute = EFastGameEnterRoute::Failed;
+	bForceOtpFlow = false;
+	bLastEnterExists = false;
 	if (Client.IsValid())
 	{
 		Client->Auth->ClearEnteredIdentity();
@@ -737,7 +740,8 @@ void UFastGameSubsystem::Enter(
 	const TSharedRef<FFastGameRequestLatentState> State = Setup.State;
 	TWeakObjectPtr<UFastGameSubsystem> WeakThis(this);
 	auto FinishEnter = [WeakThis, State](bool bOk, int32 Code, const FString& InMessage, EFastGameEnterRoute InRoute,
-		const FString& InIdentity, const FString& InEmail, const FString& InPhone, bool bInEmail, bool bInPhone)
+		const FString& InIdentity, const FString& InEmail, const FString& InPhone, bool bInEmail, bool bInPhone,
+		bool bForceOtp, bool bExists)
 	{
 		if (UFastGameSubsystem* S = WeakThis.Get())
 		{
@@ -745,7 +749,9 @@ void UFastGameSubsystem::Enter(
 			if (bOk)
 			{
 				S->bForgotPasswordFlow = false;
-				S->bForceOtpFlow = false;
+				// Set before latent completes so NotifyOtpPageShown / Send Auth Code see it.
+				S->bForceOtpFlow = bForceOtp;
+				S->bLastEnterExists = bExists;
 				S->bOtpAutoSentThisVisit = false;
 			}
 		}
@@ -763,7 +769,7 @@ void UFastGameSubsystem::Enter(
 	if (!EnsureClient(Err))
 	{
 		FastGameSubsystemLatent::SetLastRequest(this, 0, Err);
-		FinishEnter(false, 0, Err, EFastGameEnterRoute::Failed, TEXT(""), TEXT(""), TEXT(""), false, false);
+		FinishEnter(false, 0, Err, EFastGameEnterRoute::Failed, TEXT(""), TEXT(""), TEXT(""), false, false, false, false);
 		return;
 	}
 
@@ -776,7 +782,7 @@ void UFastGameSubsystem::Enter(
 				AsyncTask(ENamedThreads::GameThread, [FinishEnter, Code, InMessage]()
 				{
 					FinishEnter(false, Code, InMessage, EFastGameEnterRoute::Failed,
-						TEXT(""), TEXT(""), TEXT(""), false, false);
+						TEXT(""), TEXT(""), TEXT(""), false, false, false, false);
 				});
 				return;
 			}
@@ -784,13 +790,13 @@ void UFastGameSubsystem::Enter(
 			const bool bIsEmail = ChannelStr.Equals(TEXT("email"), ESearchCase::IgnoreCase);
 			const FString IdentityOut = bIsEmail ? Email : Phone;
 
-			auto FinishRouted = [this, FinishEnter, Code, IdentityOut, Email, Phone, bIsEmail](
+			auto FinishRouted = [FinishEnter, Code, IdentityOut, Email, Phone, bIsEmail, bExists](
 				EFastGameEnterRoute RouteOut, bool bForceOtp)
 			{
-				AsyncTask(ENamedThreads::GameThread, [this, FinishEnter, Code, RouteOut, IdentityOut, Email, Phone, bIsEmail, bForceOtp]()
+				AsyncTask(ENamedThreads::GameThread, [FinishEnter, Code, RouteOut, IdentityOut, Email, Phone, bIsEmail, bForceOtp, bExists]()
 				{
-					FinishEnter(true, Code, TEXT(""), RouteOut, IdentityOut, Email, Phone, bIsEmail, !bIsEmail);
-					bForceOtpFlow = bForceOtp;
+					FinishEnter(true, Code, TEXT(""), RouteOut, IdentityOut, Email, Phone, bIsEmail, !bIsEmail,
+						bForceOtp, bExists);
 				});
 			};
 
@@ -1117,11 +1123,17 @@ void UFastGameSubsystem::SendAuthCode(
 		return;
 	}
 
+	// Prefer ENTER-stored identity — Blueprint Identity pin sometimes holds the OTP digits.
+	const FString EffectiveIdentity = Identity.TrimStartAndEnd().IsEmpty()
+		? GetEnteredIdentity()
+		: Identity;
+
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
-		if (bForceOtpFlow)
+		auto SendLogin = [this, EffectiveIdentity, Finish]()
 		{
-			Client->Auth->RequestLoginOtp(Identity,
+			bForceOtpFlow = true;
+			Client->Auth->RequestLoginOtp(EffectiveIdentity,
 				[Finish](bool bOk, int32 Code, FString InMessage)
 				{
 					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
@@ -1129,22 +1141,53 @@ void UFastGameSubsystem::SendAuthCode(
 						Finish(bOk, Code, InMessage);
 					});
 				});
+		};
+		auto SendSignup = [this, EffectiveIdentity, Finish]()
+		{
+			bForceOtpFlow = false;
+			Client->Auth->RequestSignupVerification(EffectiveIdentity,
+				[Finish](bool bOk, int32 Code, FString InMessage)
+				{
+					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
+					{
+						Finish(bOk, Code, InMessage);
+					});
+				});
+		};
+
+		// Always re-read catalog — stale bForceOtpFlow after toggling Force OTP off
+		// must not keep hitting /login/otp/*.
+		const FString TrimGame = Client->Auth->GetGameCode().TrimStartAndEnd();
+		if (!TrimGame.IsEmpty())
+		{
+			Client->Catalog->GetAuthRequirements(TrimGame,
+				[this, SendLogin, SendSignup](bool bReqOk, bool /*Phone*/, bool /*Email*/, bool bForceOtp, FString /*Err*/)
+				{
+					AsyncTask(ENamedThreads::GameThread, [this, bReqOk, bForceOtp, SendLogin, SendSignup]()
+					{
+						if (bReqOk && bForceOtp)
+						{
+							SendLogin();
+							return;
+						}
+						bForceOtpFlow = false;
+						SendSignup();
+					});
+				});
 			return;
 		}
-		Client->Auth->RequestSignupVerification(Identity,
-			[Finish](bool bOk, int32 Code, FString InMessage)
-			{
-				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
-				{
-					Finish(bOk, Code, InMessage);
-				});
-			});
+		if (bForceOtpFlow)
+		{
+			SendLogin();
+			return;
+		}
+		SendSignup();
 		return;
 	}
 	// Enter Password screen → forgot-password recovery OTP (no Begin Forgot).
 	if (LastEnterRoute == EFastGameEnterRoute::Login)
 	{
-		Client->Auth->RequestPasswordRecovery(Identity,
+		Client->Auth->RequestPasswordRecovery(EffectiveIdentity,
 			[Finish](bool bOk, int32 Code, FString InMessage)
 			{
 				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Code, InMessage]()
@@ -1185,10 +1228,12 @@ void UFastGameSubsystem::VerifyAuthCode(
 		{
 			if (UFastGameSubsystem* S = WeakThis.Get())
 			{
-				if (S->bForceOtpFlow && S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
+				const bool bLoggedIn = S->Client.IsValid() && S->Client->Auth->IsLoggedIn();
+				if ((S->bForceOtpFlow || bLoggedIn) && S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
 				{
 					OutPin = EFastGameVerifyAuthPin::Authenticated;
 					S->bLastLoginSucceeded = true;
+					S->bForceOtpFlow = true;
 					S->BroadcastAuthComplete(EFastGameAuthCompleteReason::Login);
 				}
 				else if (S->LastEnterRoute == EFastGameEnterRoute::VerifyId)
@@ -1213,11 +1258,35 @@ void UFastGameSubsystem::VerifyAuthCode(
 		return;
 	}
 
+	// Prefer ENTER-stored identity — Blueprint Identity pin sometimes holds the OTP digits.
+	FString EffectiveIdentity = Identity.TrimStartAndEnd();
+	if (!EffectiveIdentity.IsEmpty())
+	{
+		bool bDigitsOnly = true;
+		for (const TCHAR Ch : EffectiveIdentity)
+		{
+			if (!FChar::IsDigit(Ch))
+			{
+				bDigitsOnly = false;
+				break;
+			}
+		}
+		if (bDigitsOnly && EffectiveIdentity.Len() >= 4 && EffectiveIdentity.Len() <= 8)
+		{
+			EffectiveIdentity.Reset();
+		}
+	}
+	if (EffectiveIdentity.IsEmpty())
+	{
+		EffectiveIdentity = GetEnteredIdentity();
+	}
+
 	if (LastEnterRoute == EFastGameEnterRoute::VerifyId)
 	{
-		if (bForceOtpFlow)
+		auto VerifyLogin = [this, EffectiveIdentity, Code, Finish]()
 		{
-			Client->Auth->VerifyLoginOtp(Identity, Code,
+			bForceOtpFlow = true;
+			Client->Auth->VerifyLoginOtp(EffectiveIdentity, Code,
 				[Finish](bool bOk, int32 Status, FString /*Token*/, FString InMessage)
 				{
 					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
@@ -1225,21 +1294,52 @@ void UFastGameSubsystem::VerifyAuthCode(
 						Finish(bOk, Status, InMessage);
 					});
 				});
+		};
+		auto VerifySignup = [this, EffectiveIdentity, Code, Finish]()
+		{
+			bForceOtpFlow = false;
+			Client->Auth->VerifySignupVerification(EffectiveIdentity, Code,
+				[Finish](bool bOk, int32 Status, FString InMessage)
+				{
+					AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
+					{
+						Finish(bOk, Status, InMessage);
+					});
+				});
+		};
+
+		// Always re-read catalog — stale bForceOtpFlow after toggling Force OTP off
+		// must not keep hitting /login/otp/*.
+		const FString TrimGame = Client->Auth->GetGameCode().TrimStartAndEnd();
+		if (!TrimGame.IsEmpty())
+		{
+			Client->Catalog->GetAuthRequirements(TrimGame,
+				[this, VerifyLogin, VerifySignup](bool bReqOk, bool /*Phone*/, bool /*Email*/, bool bForceOtp, FString /*Err*/)
+				{
+					AsyncTask(ENamedThreads::GameThread, [this, bReqOk, bForceOtp, VerifyLogin, VerifySignup]()
+					{
+						if (bReqOk && bForceOtp)
+						{
+							VerifyLogin();
+							return;
+						}
+						bForceOtpFlow = false;
+						VerifySignup();
+					});
+				});
 			return;
 		}
-		Client->Auth->VerifySignupVerification(Identity, Code,
-			[Finish](bool bOk, int32 Status, FString InMessage)
-			{
-				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
-				{
-					Finish(bOk, Status, InMessage);
-				});
-			});
+		if (bForceOtpFlow)
+		{
+			VerifyLogin();
+			return;
+		}
+		VerifySignup();
 		return;
 	}
 	if (LastEnterRoute == EFastGameEnterRoute::Login)
 	{
-		Client->Auth->VerifyPasswordRecovery(Identity, Code,
+		Client->Auth->VerifyPasswordRecovery(EffectiveIdentity, Code,
 			[Finish](bool bOk, int32 Status, FString InMessage)
 			{
 				AsyncTask(ENamedThreads::GameThread, [Finish, bOk, Status, InMessage]()
@@ -2844,7 +2944,13 @@ void UFastGameSubsystem::GetShopSkuAccess(
 				{
 					if (*NextIndex >= PendingIds->Num())
 					{
-						FinishAccess(true, Locked, false, *LastRestoreError);
+						// Not owned is a successful access answer. Opportunistic restore
+						// errors must not fail GetShopSkuAccess (Unity matches this).
+						if (!LastRestoreError->IsEmpty())
+						{
+							UE_LOG(LogTemp, Warning, TEXT("FastGame shop access restore: %s"), *(*LastRestoreError));
+						}
+						FinishAccess(true, Locked, false, TEXT(""));
 						return;
 					}
 					const FString ProductId = (*PendingIds)[(*NextIndex)++];
@@ -2860,7 +2966,7 @@ void UFastGameSubsystem::GetShopSkuAccess(
 							UFastGameSubsystem* S2 = WeakThis.Get();
 							if (!S2 || S2->ClientGeneration != Gen || !S2->Client.IsValid())
 							{
-								FinishAccess(true, Locked, false, *LastRestoreError);
+								FinishAccess(true, Locked, false, TEXT(""));
 								return;
 							}
 							S2->Client->Shop->RestoreUnlock(

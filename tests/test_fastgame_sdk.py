@@ -297,7 +297,7 @@ def test_ue_force_otp_auth_flow():
         )
     ]
     assert "bForceOtp" in enter_fn
-    assert "bForceOtpFlow = bForceOtp" in enter_fn
+    assert "bForceOtpFlow = bForceOtp" in enter_fn or "S->bForceOtpFlow = bForceOtp" in enter_fn
     assert "EFastGameEnterRoute::VerifyId" in enter_fn
 
     assert "force_otp" in contract

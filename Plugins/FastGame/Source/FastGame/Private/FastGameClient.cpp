@@ -714,6 +714,23 @@ bool FFastGameAuth::ResolveContactFields(const FString& Identity, const FString&
 	OutEmail = Email.TrimStartAndEnd();
 	OutPhone = Phone.TrimStartAndEnd();
 	FString EffectiveIdentity = Identity.TrimStartAndEnd();
+	// Blueprint often passes the OTP digits on the Identity pin — treat as empty → ENTER store.
+	if (!EffectiveIdentity.IsEmpty())
+	{
+		bool bDigitsOnly = true;
+		for (TCHAR Ch : EffectiveIdentity)
+		{
+			if (!FChar::IsDigit(Ch))
+			{
+				bDigitsOnly = false;
+				break;
+			}
+		}
+		if (bDigitsOnly && EffectiveIdentity.Len() >= 4 && EffectiveIdentity.Len() <= 8)
+		{
+			EffectiveIdentity.Reset();
+		}
+	}
 	if (OutEmail.IsEmpty() && OutPhone.IsEmpty() && EffectiveIdentity.IsEmpty())
 	{
 		if (!FillEmailPhoneFromEntered(OutEmail, OutPhone, OutError))
@@ -1285,13 +1302,45 @@ void FFastGameAuth::VerifySignupVerification(const FString& Identity, const FStr
 		if (OnDone) OnDone(false, 0, Err);
 		return;
 	}
+	FString GameCode, GameErr;
+	if (!RequireGameCode(GameCode, GameErr))
+	{
+		if (OnDone) OnDone(false, 0, GameErr);
+		return;
+	}
 	const FString CodeTrim = Code.TrimStartAndEnd();
-	PostContactJson(TEXT("/base/signup/verify"), OutEmail, OutPhone,
-		[CodeTrim](TSharedPtr<FJsonObject> Body)
+	TSharedPtr<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("game_code"), GameCode);
+	if (!OutEmail.IsEmpty())
+	{
+		Body->SetStringField(TEXT("email"), OutEmail);
+	}
+	if (!OutPhone.IsEmpty())
+	{
+		Body->SetStringField(TEXT("phone"), OutPhone);
+	}
+	Body->SetStringField(TEXT("code"), CodeTrim);
+	TSharedRef<FFastGameHttp> HttpRef = Http;
+	const FString TokenSlot = Config.AccessTokenSaveSlot;
+	Http->PostJson(TEXT("/base/signup/verify"), FastGameJsonUtil::Stringify(Body),
+		[HttpRef, TokenSlot, OnDone](bool bOk, int32 StatusCode, FString Resp, FString ErrMsg)
 		{
-			Body->SetStringField(TEXT("code"), CodeTrim);
-		},
-		OnDone);
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, StatusCode,
+					FFastGameHttp::ExtractApiMessage(StatusCode, Resp, ErrMsg));
+				return;
+			}
+			// Force-OTP games return access_token from /signup/verify (login OTP delegate).
+			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(Resp);
+			FString Token;
+			if (Obj.IsValid() && Obj->TryGetStringField(TEXT("access_token"), Token) && !Token.IsEmpty())
+			{
+				HttpRef->SetAccessToken(Token);
+				FastGameJsonUtil::SaveAccessTokenFile(TokenSlot, Token);
+			}
+			if (OnDone) OnDone(true, StatusCode, TEXT(""));
+		});
 }
 
 void FFastGameAuth::RequestLoginOtp(const FString& Identity,

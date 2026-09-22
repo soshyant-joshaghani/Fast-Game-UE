@@ -943,6 +943,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
 	bool bForceOtpFlow = false;
 
+	/** Last Enter reported exists=true (registered contact). */
+	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
+	bool bLastEnterExists = false;
+
 	/** Cached profile from the last successful GetMe — bind Text / Image widgets to fields. */
 	UPROPERTY(BlueprintReadOnly, Category = "FastGame|Auth")
 	FFastGameBPUser CurrentUser;
