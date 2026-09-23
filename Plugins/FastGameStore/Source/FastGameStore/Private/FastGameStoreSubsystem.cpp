@@ -219,7 +219,12 @@ bool UFastGameStoreSubsystem::EnsureSetup(const FString& ProviderId, const FStri
 	if (!Provider.Equals(Flavor, ESearchCase::IgnoreCase))
 	{
 		OutMessage = FString::Printf(
-			TEXT("FastGameStore: APK flavor '%s' does not match StorePlatform '%s'"), *Flavor, *Provider);
+			TEXT(
+				"FastGameStore: this APK was compiled for '%s' (FastGameStore.Build.cs StoreFlavor), "
+				"but Initialize Game StorePlatform is '%s'. "
+				"Set StoreFlavor to match, Full Rebuild + Package Android, and keep Initialize Game on the same store."),
+			*Flavor,
+			*Provider);
 		return false;
 	}
 	if (!IsStoreAppInstalled())

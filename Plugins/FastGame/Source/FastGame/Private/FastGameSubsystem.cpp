@@ -3240,6 +3240,23 @@ void UFastGameSubsystem::UnlockSku(
 					return;
 				}
 
+#if !PLATFORM_ANDROID
+				{
+					FString EditorMsg;
+					if (!Unlock.StoreProductId.IsEmpty())
+					{
+						EditorMsg = FString::Printf(
+							TEXT("Myket/Cafe Bazaar/Play config OK (store_product_id=%s). IAP purchase only works on the Android store APK — Unreal Editor cannot return a purchase token."),
+							*Unlock.StoreProductId);
+					}
+					else
+					{
+						EditorMsg = TEXT("Cafe Bazaar / Myket / Play IAP only works on the Android store APK. Unreal Editor cannot return a purchase token.");
+					}
+					FinishUnlock(false, 0, EditorMsg, false, Bp);
+					return;
+				}
+#else
 				IFastGameNativeStore* Native = FFastGameNativeStore::Get();
 				if (!Native)
 				{
@@ -3358,6 +3375,7 @@ void UFastGameSubsystem::UnlockSku(
 								});
 						});
 					});
+#endif
 			});
 		});
 	});

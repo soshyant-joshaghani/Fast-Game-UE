@@ -10,7 +10,8 @@ public enum FastGameStoreFlavor
 
 public class FastGameStore : ModuleRules
 {
-	// One store per APK. Must match Initialize Game StorePlatform.
+	// One store per APK — this compiles the Java/Kotlin bridge + package check.
+	// Initialize Game StorePlatform MUST match. Default Myket; set CafeBazaar for Bazaar APKs.
 	private static FastGameStoreFlavor StoreFlavor = FastGameStoreFlavor.Myket;
 
 	public FastGameStore(ReadOnlyTargetRules Target) : base(Target)

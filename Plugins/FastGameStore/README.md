@@ -12,6 +12,8 @@ Android flavors live in this plugin (`Source/FastGameStore/Java/`):
 
 1. Copy this plugin next to `Plugins/FastGame`.
 2. Set `FastGameStore.Build.cs` `StoreFlavor` to **Myket**, **CafeBazaar**, or **GooglePlay** (one APK).
+   **This is what ships in the APK** (which store app is checked / which billing SDK is linked).
+   Blueprint **Initialize Game → StorePlatform** alone does **not** switch flavors — if Build.cs stays on Myket you will still see “Myket is not installed” even when Blueprint says Cafe Bazaar.
 3. **Initialize Game** `StorePlatform` must match (`myket` / `caffebazar` / `googleplay`). OS install check (1x). Then **Initialize Client** (`ApiBaseUrl`) for network / reconnect (Nx). Does not wipe token or Enter identity.
 4. **Do not** paste Cafe Bazaar / Myket RSA in Unreal. Set it in Fast Game Editor payment config. After login the SDK fetches a wrapped copy (`store-verify-key`) and forwards it as `storePublicKey`. Optional Blueprint **Set Store Public Key** is a local override only.
 5. Cafe Bazaar `store_skus.caffebazar` must be the **console SKU** (the old Polarise APK used `LittleGuardiansGame`). Do **not** put Fast Game map ids (`full_game` / `full_map`) there. Unlock Sku uses Fast Game `sku_kind`/`sku_id` (`map` / `full_game`); the native extra is the mapped store id.
