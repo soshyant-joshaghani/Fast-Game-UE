@@ -140,6 +140,9 @@ public:
 	/** Bind Steam via Steamworks session ticket (uses client GameCode payment_config). */
 	void LinkSteamWithTicket(const FString& Ticket, const FString& Identity,
 		TFunction<void(bool /*bOk*/, bool /*bLinked*/, FString /*SteamId*/, FString /*Err*/)> OnDone);
+	/** Push owned achievements to Steam. Names must already be published in Steamworks. */
+	void ResyncSteamAchievements(
+		TFunction<void(bool /*bOk*/, int32 /*Requested*/, int32 /*Pushed*/, int32 /*Skipped*/, int32 /*Failed*/, FString /*Err*/)> OnDone);
 	void GetSteamStatus(TFunction<void(bool /*bOk*/, bool /*bLinked*/, FString /*SteamId*/, FString /*Err*/)> OnDone);
 	void UnlinkSteam(TFunction<void(bool, FString)> OnDone);
 

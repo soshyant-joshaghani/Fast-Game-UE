@@ -1635,7 +1635,7 @@ void FFastGameAuth::LinkSteamWithTicket(const FString& Ticket, const FString& Id
 		Body->SetStringField(TEXT("identity"), Identity);
 	}
 	Http->PostJson(TEXT("/base/steam/link"), FastGameJsonUtil::Stringify(Body),
-		[OnDone](bool bOk, int32, FString Resp, FString Err)
+		[this, OnDone](bool bOk, int32, FString Resp, FString Err)
 		{
 			if (!bOk)
 			{
@@ -1650,7 +1650,52 @@ void FFastGameAuth::LinkSteamWithTicket(const FString& Ticket, const FString& Id
 				Obj->TryGetBoolField(TEXT("linked"), bLinked);
 				Obj->TryGetStringField(TEXT("steamid"), SteamId);
 			}
+			if (bLinked)
+			{
+				ResyncSteamAchievements(
+					[OnDone, SteamId](bool, int32, int32, int32, int32, FString)
+					{
+						if (OnDone) OnDone(true, true, SteamId, TEXT(""));
+					});
+				return;
+			}
 			if (OnDone) OnDone(true, bLinked, SteamId, TEXT(""));
+		});
+}
+
+void FFastGameAuth::ResyncSteamAchievements(
+	TFunction<void(bool, int32, int32, int32, int32, FString)> OnDone)
+{
+	FString GameCode;
+	FString GameErr;
+	if (!RequireGameCode(GameCode, GameErr))
+	{
+		if (OnDone) OnDone(false, 0, 0, 0, 0, GameErr);
+		return;
+	}
+	const FString Path = TEXT("/apps/games/content/") + FastGameJsonUtil::Escape(GameCode)
+		+ TEXT("/achievements/steam/resync");
+	Http->PostJson(Path, TEXT("{}"),
+		[OnDone](bool bOk, int32, FString Resp, FString Err)
+		{
+			if (!bOk)
+			{
+				if (OnDone) OnDone(false, 0, 0, 0, 0, Err);
+				return;
+			}
+			const TSharedPtr<FJsonObject> Obj = FastGameJsonUtil::ParseObject(Resp);
+			int32 Requested = 0;
+			int32 Pushed = 0;
+			int32 Skipped = 0;
+			int32 Failed = 0;
+			if (Obj.IsValid())
+			{
+				Obj->TryGetNumberField(TEXT("requested"), Requested);
+				Obj->TryGetNumberField(TEXT("pushed"), Pushed);
+				Obj->TryGetNumberField(TEXT("skipped"), Skipped);
+				Obj->TryGetNumberField(TEXT("failed"), Failed);
+			}
+			if (OnDone) OnDone(true, Requested, Pushed, Skipped, Failed, TEXT(""));
 		});
 }
 

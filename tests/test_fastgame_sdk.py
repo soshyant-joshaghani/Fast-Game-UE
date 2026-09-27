@@ -11,6 +11,20 @@ def _read(rel: Path) -> str:
     return rel.read_text(encoding="utf-8")
 
 
+def test_ue_steam_resync_after_link():
+    client_h = _read(UE / "Source/FastGame/Public/FastGameClient.h")
+    client = _read(UE / "Source/FastGame/Private/FastGameClient.cpp")
+    assert "void FFastGameAuth::ResyncSteamAchievements" in client
+    assert "/achievements/steam/resync" in client
+    assert "ResyncSteamAchievements" in client_h
+    link = client.split("void FFastGameAuth::LinkSteamWithTicket", 1)[1].split(
+        "void FFastGameAuth::ResyncSteamAchievements", 1
+    )[0]
+    assert "ResyncSteamAchievements" in link
+    contract = _read(ROOT / "CONTRACT.md")
+    assert "achievements/steam/resync" in contract
+
+
 def test_ue_unlock_and_ensure_setup():
     header = _read(UE / "Source/FastGame/Public/FastGameSubsystem.h")
     cpp = _read(UE / "Source/FastGame/Private/FastGameSubsystem.cpp")
